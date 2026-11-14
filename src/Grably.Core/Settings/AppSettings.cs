@@ -85,6 +85,12 @@ public sealed class ScreenshotSettings
     public bool IncludeCursor { get; set; }
 
     public int DelaySeconds { get; set; }
+
+    /// <summary>
+    /// After dragging a region, keep it adjustable (handles, arrow keys) until Enter or a double-click,
+    /// instead of capturing as soon as the mouse button is released.
+    /// </summary>
+    public bool AdjustBeforeCapture { get; set; }
 }
 
 public enum AfterCaptureAction

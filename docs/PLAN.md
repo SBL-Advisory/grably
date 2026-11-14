@@ -7,8 +7,8 @@ This is the plan the v1 build follows, approved on 2026-11-14. The status and th
 Each milestone is one GitHub issue and one stacked PR (each branch starts from the previous milestone's branch). Merge the stack bottom-up with merge commits.
 
 - [x] M0 Logo and brand assets - issue #1, PR #2
-- [x] M1 Scaffold - issue #3
-- [ ] M2 Screenshot capture
+- [x] M1 Scaffold - issue #3, PR #4
+- [x] M2 Screenshot capture - issue #5
 - [ ] M3 Annotation editor
 - [ ] M4 Library and Settings UI
 - [ ] M5 OCR and scrolling capture
@@ -30,6 +30,10 @@ Decisions made while building, which take precedence over the plan text below:
 - **H.NotifyIcon:** `TaskbarIcon.ForceCreate()` turns on Windows Efficiency Mode by default, which throttles the whole process; always call `ForceCreate(enablesEfficiencyMode: false)`.
 - **Default hotkey conflict:** on the development machine `Alt+PrintScreen` (capture active window) is already registered by another app (Win32 error 1409). Registration failures are logged and kept in `HotkeyController.Registrations` so the M4 settings page can show them.
 - **Isolated runs:** setting `GRABLY_HOME` puts settings, data and logs under one folder; tests, DevCli checks and end-to-end runs use it so the real profile is never touched.
+- **Region capture finishes on mouse release** by default (like Snipping Tool). Resize handles, arrow-key nudging and Enter/double-click confirmation are the optional `screenshot.adjustBeforeCapture` setting; the recording overlay (M7) will use that mode. Clicking without dragging captures the hovered window, or the monitor when no window is under the pointer.
+- **Full-screen capture** takes the monitor under the pointer. **Window capture** crops the frozen desktop to the foreground window's visible frame, so anything covering that window is included (what you see is what you get).
+- **Overlay logic** lives in `Grably.Core/Capture/RegionSelection` (unit-tested state machine); the WPF overlay only draws it and feeds it physical pointer positions from `GetCursorPos`.
+- **End-to-end checks** drive the real app with `grably-dev send-keys`, `wait-window` and `mouse` (which refuses to click unless a named Grably window is visible). Verified on a two-monitor 100 %/125 % setup: a drag across the monitor seam captures the exact pixel area.
 
 ## The plan
 

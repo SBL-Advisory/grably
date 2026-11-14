@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Grably.App.Shell;
+using Grably.Core.Capture;
 using Grably.Core.Hotkeys;
 using Grably.Core.Settings;
 
@@ -23,7 +24,7 @@ public sealed partial class LibraryViewModel(AppCommands commands, SettingsStore
     }
 
     [RelayCommand]
-    private void CaptureRegion() => commands.CaptureRegion();
+    private Task CaptureRegion() => commands.CaptureFromLibraryAsync(CaptureKind.Region);
 
     [RelayCommand]
     private void Record() => commands.ToggleRecording();

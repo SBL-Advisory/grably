@@ -15,6 +15,7 @@ WM_USER
 // Input simulation (dev harness self-tests, scrolling capture)
 SendInput
 MapVirtualKey
+SetCursorPos
 
 // Single instance: let the running instance bring its window to the front
 GetNamedPipeServerProcessId
@@ -23,3 +24,53 @@ AllowSetForegroundWindow
 // DPI and metrics
 GetDpiForSystem
 GetSystemMetricsForDpi
+GetSystemMetrics
+SetProcessDpiAwarenessContext
+GetDpiForMonitor
+DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+
+// Monitors
+EnumDisplayMonitors
+GetMonitorInfo
+MONITORINFOEXW
+MONITORINFOF_PRIMARY
+MonitorFromPoint
+
+// Screen capture (GDI)
+GetDC
+ReleaseDC
+CreateCompatibleDC
+DeleteDC
+CreateDIBSection
+SelectObject
+DeleteObject
+BitBlt
+GdiFlush
+GetCursorInfo
+GetIconInfo
+DrawIconEx
+GetCursorPos
+
+// Windows
+EnumWindows
+IsWindowVisible
+IsIconic
+GetWindowText
+GetWindowTextLength
+GetClassName
+GetWindowThreadProcessId
+GetForegroundWindow
+GetWindowRect
+GetWindowLong
+WINDOW_EX_STYLE
+DwmGetWindowAttribute
+SetWindowPos
+HWND_TOPMOST
+PostMessage
+WM_CLOSE
+
+// Foreground tracking (what "Capture window" means when started from the tray menu)
+SetWinEventHook
+UnhookWinEvent
+EVENT_SYSTEM_FOREGROUND
+WINEVENT_OUTOFCONTEXT
