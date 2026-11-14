@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Unit tests run everywhere. Tests that need a real desktop session (screen capture, input, devices) carry
+       [Trait("Category", "Desktop")]; CI excludes them with the xUnit option filter-not-trait Category=Desktop.
+       xUnit v3 runs on Microsoft.Testing.Platform (opted in via global.json), so no VSTest adapter is needed. -->
+  <PropertyGroup>
+    <TargetFramework>$(GrablyWindowsTfm)</TargetFramework>
+    <SupportedOSPlatformVersion>$(GrablyMinWindows)</SupportedOSPlatformVersion>
+    <OutputType>Exe</OutputType>
+    <UseWPF>true</UseWPF>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Grably.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Grably.Core\Grably.Core.csproj" />
+    <ProjectReference Include="..\..\src\Grably.Platform\Grably.Platform.csproj" />
+    <ProjectReference Include="..\..\src\Grably.App\Grably.App.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <!-- UseWPF drops System.IO from the implicit usings (Path clashes with System.Windows.Shapes.Path). -->
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+</Project>

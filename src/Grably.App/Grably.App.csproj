@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>$(GrablyWindowsTfm)</TargetFramework>
+    <SupportedOSPlatformVersion>$(GrablyMinWindows)</SupportedOSPlatformVersion>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>Grably</AssemblyName>
+    <RootNamespace>Grably.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\assets\brand\grably.ico</ApplicationIcon>
+    <!-- Program.Main is hand-written (single instance, host, and later Velopack), so App.xaml must not generate one. -->
+    <StartupObject>Grably.App.Program</StartupObject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ApplicationDefinition Remove="App.xaml" />
+    <Page Include="App.xaml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Brand assets are generated in assets/brand by tools/brand/build_brand.py; link them, never copy. -->
+    <Resource Include="..\..\assets\brand\grably.ico" Link="Assets\grably.ico" />
+    <Resource Include="..\..\assets\brand\grably-app-icon-512.png" Link="Assets\grably-app-icon.png" />
+    <Resource Include="..\..\assets\brand\tray\*.ico" Link="Assets\Tray\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="H.NotifyIcon.Wpf" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Serilog.Extensions.Hosting" />
+    <PackageReference Include="Serilog.Sinks.File" />
+    <PackageReference Include="WPF-UI" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Grably.Core\Grably.Core.csproj" />
+    <ProjectReference Include="..\Grably.Platform\Grably.Platform.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,19 @@
+<Project>
+  <!-- Shared build settings for every project in the repo. The version below is bumped by tools/bump-version.ps1. -->
+  <PropertyGroup>
+    <Version>0.1.1</Version>
+    <Product>Grably</Product>
+    <Company>Grably</Company>
+    <Authors>Grably contributors</Authors>
+    <Copyright>Copyright (c) 2026 SBL Advisory</Copyright>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Deterministic>true</Deterministic>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- Windows-specific projects. Never use a ".1" revision here: it opts into the CsWinRT 3 preview. -->
+    <GrablyWindowsTfm>net10.0-windows10.0.26100.0</GrablyWindowsTfm>
+    <GrablyMinWindows>10.0.22000.0</GrablyMinWindows>
+  </PropertyGroup>
+</Project>
