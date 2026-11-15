@@ -1,3 +1,22 @@
+# Build output
+bin/
+obj/
+artifacts/
+publish/
+Releases/
+TestResults/
+*.binlog
+
+# IDEs
+.vs/
+.idea/
+*.user
+*.suo
+*.DotSettings.user
+
+# Bundled ffmpeg is downloaded by tools/fetch-ffmpeg.ps1, never committed
+src/Grably.App/ffmpeg/
+
 # Python
 __pycache__/
 *.pyc
