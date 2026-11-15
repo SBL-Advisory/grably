@@ -59,6 +59,8 @@ public partial class App : Application
             }
 #endif
 
+            // Start remembering the user's foreground window before the tray menu can be used (needs the UI thread).
+            _services.GetRequiredService<Platform.Capture.ForegroundWindowTracker>();
             _services.GetRequiredService<TrayIconController>().Show();
             _services.GetRequiredService<HotkeyController>().Start();
             _logger.LogInformation("Ready");

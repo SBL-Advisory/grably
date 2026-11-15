@@ -17,7 +17,8 @@ namespace Grably.App.Shell;
 /// The notification-area icon and its menu. Picks the icon variant for the taskbar's light/dark theme and the
 /// recording state, at the exact pixel size Windows uses for the current display scaling.
 /// </summary>
-public sealed class TrayIconController(AppCommands commands, SettingsStore settings, ILogger<TrayIconController> logger)
+public sealed class TrayIconController(
+    AppCommands commands, SettingsStore settings, UserNotifications notifications, ILogger<TrayIconController> logger)
     : IDisposable
 {
     private static readonly TimeSpan FastRetry = TimeSpan.FromSeconds(2);
@@ -41,7 +42,7 @@ public sealed class TrayIconController(AppCommands commands, SettingsStore setti
         };
         _icon.TrayLeftMouseUp += (_, _) => commands.OpenLibrary();
         UpdateImage();
-        commands.NotAvailable += (_, message) => Notify(message);
+        notifications.Requested += (_, message) => Notify(message);
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
 
         if (!TryCreate())
@@ -154,7 +155,7 @@ public sealed class TrayIconController(AppCommands commands, SettingsStore setti
         var hotkeys = settings.Current.Hotkeys;
         var menu = new ContextMenu();
         menu.Items.Add(Item("Capture region", SymbolRegular.Screenshot24, commands.CaptureRegion, hotkeys, HotkeyAction.CaptureRegion));
-        menu.Items.Add(Item("Capture window", SymbolRegular.Window24, commands.CaptureActiveWindow, hotkeys, HotkeyAction.CaptureActiveWindow));
+        menu.Items.Add(Item("Capture window", SymbolRegular.Window24, commands.CaptureLastUserWindow, hotkeys, HotkeyAction.CaptureActiveWindow));
         menu.Items.Add(Item("Capture full screen", SymbolRegular.Desktop24, commands.CaptureFullScreen, hotkeys, HotkeyAction.CaptureFullScreen));
         menu.Items.Add(Item("Scrolling capture", SymbolRegular.ArrowAutofitHeight24, commands.ScrollingCapture, hotkeys, HotkeyAction.ScrollingCapture));
         menu.Items.Add(Item("Capture text", SymbolRegular.ScanText24, commands.CaptureText, hotkeys, HotkeyAction.CaptureText));
@@ -179,7 +180,12 @@ public sealed class TrayIconController(AppCommands commands, SettingsStore setti
             item.InputGestureText = gesture.ToString();
         }
 
-        item.Click += (_, _) => action();
+        item.Click += async (_, _) =>
+        {
+            // Let the menu close and the screen repaint first, or a capture would freeze the menu into the image.
+            await Task.Delay(AppCommands.WindowHideDelay);
+            action();
+        };
         return item;
     }
 }

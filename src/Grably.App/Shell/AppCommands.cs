@@ -1,6 +1,9 @@
 using System.Windows;
+using Grably.App.Capture;
 using Grably.App.Views;
+using Grably.Core.Capture;
 using Grably.Core.Hotkeys;
+using Grably.Platform.Capture;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -8,14 +11,13 @@ namespace Grably.App.Shell;
 
 /// <summary>
 /// Every user-facing action, whether it comes from a hotkey, the tray menu or a window. Call on the UI thread.
-/// Actions whose feature is not built yet log and say so; each is replaced in the milestone named in the message.
+/// Actions whose feature is not built yet say so; each is replaced in the milestone named in its message.
 /// </summary>
-public sealed class AppCommands(IServiceProvider services, ILogger<AppCommands> logger)
+public sealed class AppCommands(
+    IServiceProvider services, ScreenshotService screenshots, ForegroundWindowTracker foregroundTracker,
+    UserNotifications notifications, ILogger<AppCommands> logger)
 {
     private LibraryWindow? _library;
-
-    /// <summary>Raised when an action is not available yet, so the shell can tell the user.</summary>
-    public event EventHandler<string>? NotAvailable;
 
     public void Execute(HotkeyAction action)
     {
@@ -48,11 +50,46 @@ public sealed class AppCommands(IServiceProvider services, ILogger<AppCommands> 
         }
     }
 
-    public void CaptureRegion() => NotYet("Region capture", "M2");
+    public void CaptureRegion() => _ = screenshots.CaptureAsync(CaptureKind.Region);
 
-    public void CaptureFullScreen() => NotYet("Full-screen capture", "M2");
+    /// <summary>
+    /// The Library's own Capture button: hide the Library first so it is not in the screenshot, and bring it back
+    /// afterwards.
+    /// </summary>
+    public async Task CaptureFromLibraryAsync(CaptureKind kind)
+    {
+        var library = _library;
+        if (library is null || !library.IsVisible || screenshots.IsBusy)
+        {
+            await screenshots.CaptureAsync(kind);
+            return;
+        }
 
-    public void CaptureActiveWindow() => NotYet("Window capture", "M2");
+        library.Hide();
+        try
+        {
+            await Task.Delay(WindowHideDelay); // let the desktop repaint without it
+            await screenshots.CaptureAsync(kind);
+        }
+        finally
+        {
+            if (_library == library)
+            {
+                library.Show();
+            }
+        }
+    }
+
+    /// <summary>How long a menu or window needs to disappear from the screen before a capture freezes it.</summary>
+    public static readonly TimeSpan WindowHideDelay = TimeSpan.FromMilliseconds(250);
+
+    public void CaptureFullScreen() => _ = screenshots.CaptureAsync(CaptureKind.FullScreen);
+
+    public void CaptureActiveWindow() => _ = screenshots.CaptureAsync(CaptureKind.Window);
+
+    /// <summary>"Capture window" from the tray menu: the window the user was in before opening the menu.</summary>
+    public void CaptureLastUserWindow() =>
+        _ = screenshots.CaptureAsync(CaptureKind.Window, foregroundTracker.LastUserWindow is var w and not 0 ? w : null);
 
     public void ScrollingCapture() => NotYet("Scrolling capture", "M5");
 
@@ -92,6 +129,6 @@ public sealed class AppCommands(IServiceProvider services, ILogger<AppCommands> 
     private void NotYet(string feature, string milestone)
     {
         logger.LogInformation("{Feature} requested; not built yet (milestone {Milestone})", feature, milestone);
-        NotAvailable?.Invoke(this, $"{feature} is coming soon.");
+        notifications.Show($"{feature} is coming soon.");
     }
 }

@@ -1,7 +1,9 @@
+using Grably.App.Capture;
 using Grably.App.Shell;
 using Grably.App.ViewModels;
 using Grably.App.Views;
 using Grably.Core.Settings;
+using Grably.Platform.Capture;
 using Grably.Platform.Hotkeys;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -14,13 +16,19 @@ internal static class ServiceRegistration
         // Core and Platform
         services.AddSingleton<SettingsStore>();
         services.AddSingleton<GlobalHotkeyService>();
+        services.AddSingleton<ForegroundWindowTracker>(); // created on the UI thread at startup (needs its message loop)
 
         // Shell
         services.AddSingleton<App>();
         services.AddSingleton<ThemeController>();
+        services.AddSingleton<UserNotifications>();
         services.AddSingleton<AppCommands>();
         services.AddSingleton<TrayIconController>();
         services.AddSingleton<HotkeyController>();
+
+        // Capture
+        services.AddSingleton<ScreenshotService>();
+        services.AddSingleton<CaptureDelivery>();
 
         // Windows and view models
         services.AddTransient<LibraryWindow>();

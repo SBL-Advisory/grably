@@ -66,17 +66,28 @@ public sealed class GlobalHotkeyService : IDisposable
         return Invoke(() =>
         {
             UnregisterOnLoop(e => e.FromApply);
-            return list.Select(b => RegisterOnLoop(b.Key, b.Value, fromApply: true)).ToList();
+            return list.Select(b => RegisterOnLoop(b.Key, b.Value, fromApply: true).Registration).ToList();
         });
     }
 
     /// <summary>Registers one more hotkey that survives later <see cref="Apply"/> calls (e.g. pause while recording).</summary>
     public HotkeyRegistration Register(HotkeyAction action, HotkeyGesture gesture) =>
-        Invoke(() => RegisterOnLoop(action, gesture, fromApply: false));
+        Invoke(() => RegisterOnLoop(action, gesture, fromApply: false).Registration);
 
     /// <summary>Removes the registrations for <paramref name="action"/> made with <see cref="Register"/>.</summary>
     public void Unregister(HotkeyAction action) =>
-        Invoke(() => UnregisterOnLoop(e => !e.FromApply && e.Registration.Action == action));
+        Invoke(() => UnregisterOnLoop(e => !e.FromApply && e.Callback is null && e.Registration.Action == action));
+
+    /// <summary>
+    /// Grabs a key combination for a short time (e.g. Esc while the capture overlay is up, so it works even when the
+    /// overlay could not take the keyboard focus). <paramref name="onPressed"/> runs on the hotkey thread.
+    /// Dispose the result to release the key. Returns null when the combination is taken.
+    /// </summary>
+    public IDisposable? RegisterTemporary(HotkeyGesture gesture, Action onPressed)
+    {
+        var (registration, id) = Invoke(() => RegisterOnLoop(default, gesture, fromApply: false, onPressed));
+        return registration.Succeeded ? new TemporaryRegistration(this, id) : null;
+    }
 
     public void Dispose()
     {
@@ -136,24 +147,26 @@ public sealed class GlobalHotkeyService : IDisposable
         return done.Task.GetAwaiter().GetResult();
     }
 
-    private HotkeyRegistration RegisterOnLoop(HotkeyAction action, HotkeyGesture gesture, bool fromApply)
+    private (HotkeyRegistration Registration, int Id) RegisterOnLoop(
+        HotkeyAction action, HotkeyGesture gesture, bool fromApply, Action? callback = null)
     {
         var id = _nextId++;
         var modifiers = (HOT_KEY_MODIFIERS)gesture.Modifiers | HOT_KEY_MODIFIERS.MOD_NOREPEAT;
         var ok = PInvoke.RegisterHotKey(HWND.Null, id, modifiers, (uint)gesture.VirtualKey);
         var error = ok ? 0 : Marshal.GetLastPInvokeError();
         var result = new HotkeyRegistration(action, gesture, ok, error);
+        var purpose = callback is null ? action.ToString() : "a temporary use";
         if (ok)
         {
-            _registered[id] = new Entry(result, fromApply);
-            _logger.LogInformation("Registered hotkey {Gesture} for {Action}", gesture, action);
+            _registered[id] = new Entry(result, fromApply, callback);
+            _logger.LogInformation("Registered hotkey {Gesture} for {Purpose}", gesture, purpose);
         }
         else
         {
-            _logger.LogWarning("Could not register hotkey {Gesture} for {Action} (Win32 error {Error})", gesture, action, error);
+            _logger.LogWarning("Could not register hotkey {Gesture} for {Purpose} (Win32 error {Error})", gesture, purpose, error);
         }
 
-        return result;
+        return (result, id);
     }
 
     private bool UnregisterOnLoop(Func<Entry, bool> which)
@@ -182,8 +195,15 @@ public sealed class GlobalHotkeyService : IDisposable
             {
                 if (_registered.TryGetValue((int)msg.wParam.Value, out var entry))
                 {
-                    _logger.LogInformation("Hotkey {Gesture} pressed ({Action})", entry.Registration.Gesture, entry.Registration.Action);
-                    RaisePressed(entry.Registration.Action);
+                    if (entry.Callback is { } callback)
+                    {
+                        RunCallback(callback, entry.Registration.Gesture);
+                    }
+                    else
+                    {
+                        _logger.LogInformation("Hotkey {Gesture} pressed ({Action})", entry.Registration.Gesture, entry.Registration.Action);
+                        RaisePressed(entry.Registration.Action);
+                    }
                 }
             }
             else if (msg.message == WmInvoke)
@@ -238,7 +258,43 @@ public sealed class GlobalHotkeyService : IDisposable
         }
     }
 
-    private sealed record Entry(HotkeyRegistration Registration, bool FromApply);
+    private void RunCallback(Action callback, HotkeyGesture gesture)
+    {
+        try
+        {
+            callback();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Temporary hotkey {Gesture} handler failed", gesture);
+        }
+    }
+
+    private sealed record Entry(HotkeyRegistration Registration, bool FromApply, Action? Callback);
 
     private sealed record WorkItem(Action Run, Action<Exception> Fail);
+
+    private sealed class TemporaryRegistration(GlobalHotkeyService owner, int id) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 1)
+            {
+                return;
+            }
+
+            try
+            {
+                owner.Invoke(() => owner.UnregisterOnLoop(e => e.Callback is not null && owner.IsId(e, id)));
+            }
+            catch (ObjectDisposedException)
+            {
+                // The service is shutting down and releases every hotkey itself.
+            }
+        }
+    }
+
+    private bool IsId(Entry entry, int id) => _registered.TryGetValue(id, out var found) && ReferenceEquals(found, entry);
 }

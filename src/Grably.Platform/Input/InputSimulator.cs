@@ -1,11 +1,12 @@
 using System.Runtime.InteropServices;
+using Grably.Core.Geometry;
 using Grably.Core.Hotkeys;
 using Windows.Win32;
 using Windows.Win32.UI.Input.KeyboardAndMouse;
 
 namespace Grably.Platform.Input;
 
-/// <summary>Synthesises keyboard input with SendInput. Used by self-tests in the dev harness.</summary>
+/// <summary>Synthesises keyboard and mouse input. Used by the dev harness for end-to-end checks.</summary>
 public static class InputSimulator
 {
     // Keys that Windows expects with the extended-key flag (navigation cluster, PrintScreen, Win keys...).
@@ -45,6 +46,49 @@ public static class InputSimulator
 
         var array = inputs.ToArray();
         return (int)PInvoke.SendInput(array, Marshal.SizeOf<INPUT>());
+    }
+
+    /// <summary>Puts the pointer on an exact physical pixel (the process must be per-monitor DPI aware).</summary>
+    public static bool MoveTo(PixelPoint p) => PInvoke.SetCursorPos(p.X, p.Y);
+
+    public static void LeftButton(bool down) => SendMouse(down ? MOUSE_EVENT_FLAGS.MOUSEEVENTF_LEFTDOWN : MOUSE_EVENT_FLAGS.MOUSEEVENTF_LEFTUP);
+
+    public static void RightButton(bool down) => SendMouse(down ? MOUSE_EVENT_FLAGS.MOUSEEVENTF_RIGHTDOWN : MOUSE_EVENT_FLAGS.MOUSEEVENTF_RIGHTUP);
+
+    public static void Click(PixelPoint p)
+    {
+        MoveTo(p);
+        Thread.Sleep(30);
+        LeftButton(down: true);
+        Thread.Sleep(30);
+        LeftButton(down: false);
+    }
+
+    /// <summary>Presses at <paramref name="from"/>, moves in steps to <paramref name="to"/> and releases.</summary>
+    public static void Drag(PixelPoint from, PixelPoint to, int steps = 12)
+    {
+        MoveTo(from);
+        Thread.Sleep(50);
+        LeftButton(down: true);
+        Thread.Sleep(50);
+        for (var i = 1; i <= steps; i++)
+        {
+            MoveTo(new PixelPoint(from.X + ((to.X - from.X) * i / steps), from.Y + ((to.Y - from.Y) * i / steps)));
+            Thread.Sleep(20);
+        }
+
+        Thread.Sleep(50);
+        LeftButton(down: false);
+    }
+
+    private static void SendMouse(MOUSE_EVENT_FLAGS flags)
+    {
+        var input = new INPUT
+        {
+            type = INPUT_TYPE.INPUT_MOUSE,
+            Anonymous = new INPUT._Anonymous_e__Union { mi = new MOUSEINPUT { dwFlags = flags } },
+        };
+        PInvoke.SendInput([input], Marshal.SizeOf<INPUT>());
     }
 
     private static INPUT Key(int virtualKey, bool up)

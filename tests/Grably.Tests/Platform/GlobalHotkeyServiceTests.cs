@@ -79,6 +79,26 @@ public class GlobalHotkeyServiceTests
     }
 
     [Fact]
+    public async Task Temporary_hotkey_calls_back_and_is_released_on_dispose()
+    {
+        using var hotkeys = new GlobalHotkeyService();
+        var pressed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var raisedAsAction = false;
+        hotkeys.HotkeyPressed += (_, _) => raisedAsAction = true;
+
+        var temporary = hotkeys.RegisterTemporary(OtherGesture, () => pressed.TrySetResult());
+        Assert.NotNull(temporary);
+        InputSimulator.SendGesture(OtherGesture);
+        await pressed.Task.WaitAsync(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
+        Assert.False(raisedAsAction);
+
+        temporary.Dispose();
+
+        // Released: the same combination can be registered again.
+        Assert.True(hotkeys.Register(HotkeyAction.PauseRecording, OtherGesture).Succeeded);
+    }
+
+    [Fact]
     public void Calls_after_dispose_throw()
     {
         var hotkeys = new GlobalHotkeyService();
