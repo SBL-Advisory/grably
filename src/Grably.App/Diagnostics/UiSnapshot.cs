@@ -5,7 +5,9 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Grably.App.Capture.Overlay;
+using Grably.App.Editor;
 using Grably.App.Views;
+using Grably.Core.Annotations;
 using Grably.Core.Capture;
 using Grably.Core.Geometry;
 using Grably.Core.Imaging;
@@ -29,8 +31,9 @@ internal static class UiSnapshot
             "overlayhover" => RenderOverlay(OverlayScenario.Hover),
             "overlaydrag" => RenderOverlay(OverlayScenario.Drag),
             "overlayadjust" => RenderOverlay(OverlayScenario.Adjust),
+            "editor" => RenderWindow(SampleEditor(services)),
             _ => throw new ArgumentException(
-                $"Unknown window '{request.Window}'. Known: Library, OverlayHover, OverlayDrag, OverlayAdjust."),
+                $"Unknown window '{request.Window}'. Known: Library, Editor, OverlayHover, OverlayDrag, OverlayAdjust."),
         };
 
         var output = Path.GetFullPath(request.OutputPath);
@@ -120,6 +123,43 @@ internal static class UiSnapshot
         var bitmap = new RenderTargetBitmap(desktop.Width, desktop.Height, 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(surface);
         return bitmap;
+    }
+
+    /// <summary>The editor over a synthetic screenshot with one of every annotation and the rectangle selected.</summary>
+    private static EditorWindow SampleEditor(IServiceProvider services)
+    {
+        var area = new PixelRect(0, 0, 960, 600);
+        var image = SyntheticDesktop(area, new PixelRect(80, 60, 640, 420));
+        var doc = AnnotationDocument.ForImage(area.Width, area.Height);
+        var rect = new RectangleItem { Rect = new RectD(120, 140, 260, 90) };
+        doc.Items.Add(new RedactItem { Rect = new RectD(420, 250, 240, 40), Mode = RedactMode.Pixelate, Strength = 10 });
+        doc.Items.Add(new StrokeItem
+        {
+            Kind = StrokeKind.Highlighter,
+            Points = [new PointD(110, 330), new PointD(520, 330)],
+            Style = new AnnotationStyle { Stroke = new Rgba(0xFF, 0xE6, 0x00), Thickness = 18, Opacity = 0.45, Shadow = false },
+        });
+        doc.Items.Add(rect);
+        doc.Items.Add(new LineItem { Start = new PointD(760, 120), End = new PointD(400, 180), Heads = ArrowHeads.End });
+        doc.Items.Add(new EllipseItem { Rect = new RectD(500, 360, 160, 90) });
+        doc.Items.Add(new StepItem { Center = new PointD(100, 140), Number = 1 });
+        doc.Items.Add(new StepItem { Center = new PointD(760, 400), Number = 2 });
+        doc.Items.Add(new TextItem { Position = new PointD(740, 160), Text = "Click Save\nwhen done", Background = new Rgba(0xFF, 0xFF, 0xFF) });
+
+        var source = new EditorDocumentSource
+        {
+            Original = image,
+            OriginalPng = [],
+            Document = doc,
+            ImagePath = @"C:\Users\you\Pictures\Grably\Grably_2026-11-14_15-30-05.png",
+            ProjectPath = Path.Combine(Path.GetTempPath(), "snapshot.grably"),
+        };
+        var window = ActivatorUtilities.CreateInstance<EditorWindow>(services, source);
+        window.Width = 1100;
+        window.Height = 820;
+        window.Editor.Tool = EditorTool.Select;
+        window.Editor.Select(rect);
+        return window;
     }
 
     private static PixelBuffer SyntheticDesktop(PixelRect desktop, PixelRect window)

@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace Grably.App;
 
 /// <summary>Command-line options of Grably.exe.</summary>
@@ -6,12 +8,16 @@ public sealed record LaunchOptions
     /// <summary>Start without opening a window (used when Grably starts with Windows).</summary>
     public bool Background { get; init; }
 
+    /// <summary>Images or .grably projects to open in the editor ("Open with Grably").</summary>
+    public IReadOnlyList<string> Files { get; init; } = [];
+
     /// <summary>Debug builds only: render a window to a PNG and exit.</summary>
     public SnapshotRequest? Snapshot { get; init; }
 
     public static LaunchOptions Parse(IReadOnlyList<string> args)
     {
         var background = false;
+        var files = new List<string>();
         string? window = null, output = null, theme = null;
         for (var i = 0; i < args.Count; i++)
         {
@@ -29,6 +35,9 @@ public sealed record LaunchOptions
                 case "--theme" when i + 1 < args.Count:
                     theme = args[++i];
                     break;
+                case var arg when !arg.StartsWith("--", StringComparison.Ordinal) && File.Exists(args[i]):
+                    files.Add(Path.GetFullPath(args[i]));
+                    break;
             }
         }
 
@@ -38,7 +47,7 @@ public sealed record LaunchOptions
         // Release builds have no snapshot support; ignore the option rather than bypass the single-instance guard.
         SnapshotRequest? snapshot = null;
 #endif
-        return new LaunchOptions { Background = background, Snapshot = snapshot };
+        return new LaunchOptions { Background = background, Files = files, Snapshot = snapshot };
     }
 }
 

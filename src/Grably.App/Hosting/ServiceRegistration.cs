@@ -1,4 +1,5 @@
 using Grably.App.Capture;
+using Grably.App.Editor;
 using Grably.App.Shell;
 using Grably.App.ViewModels;
 using Grably.App.Views;
@@ -26,9 +27,10 @@ internal static class ServiceRegistration
         services.AddSingleton<TrayIconController>();
         services.AddSingleton<HotkeyController>();
 
-        // Capture
+        // Capture and editing
         services.AddSingleton<ScreenshotService>();
         services.AddSingleton<CaptureDelivery>();
+        services.AddSingleton<EditorService>();
 
         // Windows and view models
         services.AddTransient<LibraryWindow>();

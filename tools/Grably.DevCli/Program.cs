@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Grably.Core;
+using Grably.Core.Annotations;
 using Grably.Core.Geometry;
 using Grably.Core.Hotkeys;
 using Grably.Core.Imaging;
@@ -21,13 +22,15 @@ internal static class Program
         ("version", "Print the Grably version."),
         ("paths", "Print where settings, data and logs live (honours GRABLY_HOME)."),
         ("hotkey-selftest [gesture]", "Register a global hotkey, press it with SendInput, check it arrives. Default Ctrl+Alt+Shift+F24."),
-        ("send-keys <gesture>", "Press a key combination with SendInput, e.g. to trigger a running Grably's hotkey."),
+        ("send-keys <gesture> [--require-foreground <title|*part>]", "Press a key combination; with the guard, only if that window is in front."),
         ("monitors", "List monitors with physical bounds, work area and DPI."),
         ("windows", "List capturable top-level windows in z-order with their visible bounds."),
         ("screenshot <target> [--cursor] [--out f.png]", "Grab --all, --monitor N, --region x,y,w,h, --foreground or --window <title>."),
         ("mouse click x,y | drag x1,y1 x2,y2 | rightclick x,y  --require-window <title>",
             "Synthesise mouse input in physical pixels; refuses unless a window with that exact title is visible."),
-        ("wait-window <title> [seconds]", "Wait until a window with that exact title is visible (default 5 s)."),
+        ("wait-window <title> [seconds] [--contains]", "Wait until a window with that title (or containing it) is visible (default 5 s)."),
+        ("render <doc.json image.png | project.grably> --out f.png", "Flatten annotations over their image with the app's renderer."),
+        ("project <project.grably>", "List a project's image path, size, crop and annotations."),
     ];
 
     private static int Main(string[] args)
@@ -47,11 +50,16 @@ internal static class Program
                 "windows" => ListWindows(),
                 "screenshot" => Screenshot(args[1..]),
                 "mouse" => Mouse(args[1..]),
-                "wait-window" when args.Length > 1 => WaitWindow(args[1], args.Length > 2 ? double.Parse(args[2], System.Globalization.CultureInfo.InvariantCulture) : 5),
+                "wait-window" when args.Length > 1 => WaitWindow(
+                    args[1],
+                    args.Length > 2 && double.TryParse(args[2], System.Globalization.CultureInfo.InvariantCulture, out var s) ? s : 5,
+                    args.Contains("--contains")),
+                "render" => RunSta(() => Render(args[1..])),
+                "project" when args.Length > 1 => DescribeProject(args[1]),
                 "version" => PrintVersion(),
                 "paths" => PrintPaths(),
                 "hotkey-selftest" => HotkeySelfTest(args.Length > 1 ? args[1] : "Ctrl+Alt+Shift+F24"),
-                "send-keys" when args.Length > 1 => SendKeys(args[1]),
+                "send-keys" when args.Length > 1 => SendKeys(args[1], OptionValue(args, "--require-foreground")),
                 _ => Usage($"Unknown command '{args[0]}'."),
             };
         }
@@ -78,6 +86,10 @@ internal static class Program
 
         return error is null ? 0 : 2;
     }
+
+    /// <summary>The value after <paramref name="name"/> in the arguments, or null.</summary>
+    private static string? OptionValue(string[] args, string name) =>
+        Array.IndexOf(args, name) is var at and >= 0 && at + 1 < args.Length ? args[at + 1] : null;
 
     private static int PrintVersion()
     {
@@ -230,14 +242,14 @@ internal static class Program
         return 0;
     }
 
-    private static int WaitWindow(string title, double seconds)
+    private static int WaitWindow(string title, double seconds, bool contains)
     {
         var deadline = Stopwatch.StartNew();
         while (deadline.Elapsed.TotalSeconds < seconds)
         {
-            if (IsWindowVisible(title))
+            if (FindWindow(title, contains) is { } window)
             {
-                Console.WriteLine($"PASS window '{title}' visible after {deadline.ElapsedMilliseconds} ms");
+                Console.WriteLine($"PASS window '{window.Title}' visible after {deadline.ElapsedMilliseconds} ms at {window.Bounds}");
                 return 0;
             }
 
@@ -248,12 +260,114 @@ internal static class Program
         return 1;
     }
 
-    private static bool IsWindowVisible(string title) =>
-        WindowEnumerator.GetVisibleWindows().Any(w => w.Title == title);
+    private static bool IsWindowVisible(string title) => FindWindow(title, contains: title.StartsWith('*')) is not null;
 
-    private static int SendKeys(string gestureText)
+    /// <summary>Exact title, or (with contains, or a leading * in --require-window) a title containing the text.</summary>
+    private static Core.Capture.WindowInfo? FindWindow(string title, bool contains)
+    {
+        var text = title.TrimStart('*');
+        return WindowEnumerator.GetVisibleWindows().FirstOrDefault(w =>
+            contains ? w.Title.Contains(text, StringComparison.OrdinalIgnoreCase) : w.Title == text);
+    }
+
+    private static int Render(string[] args)
+    {
+        var output = Array.IndexOf(args, "--out") is var o and >= 0 && o + 1 < args.Length ? args[o + 1] : "render.png";
+        var inputs = args.Where((a, i) => a != "--out" && (i == 0 || args[i - 1] != "--out")).ToArray();
+        AnnotationDocument document;
+        PixelBuffer image;
+        if (inputs.Length == 1 && inputs[0].EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase))
+        {
+            var (png, doc, _) = ProjectFile.Load(inputs[0]);
+            document = doc;
+            image = DecodeImage(png);
+        }
+        else if (inputs.Length == 2)
+        {
+            document = AnnotationJson.Deserialize(File.ReadAllText(inputs[0]));
+            image = DecodeImage(File.ReadAllBytes(inputs[1]));
+        }
+        else
+        {
+            throw new ArgumentException("render expects <document.json> <image.png> or <project.grably>, then --out <file.png>.");
+        }
+
+        var flattened = Grably.App.Editor.AnnotationRenderer.Flatten(document, image);
+        var path = Path.GetFullPath(output);
+        Grably.App.Capture.ImageOutput.Save(flattened, path, Core.Settings.ImageFormat.Png, 100);
+        Console.WriteLine($"PASS render {document.Items.Count} annotation(s) -> {path} ({flattened.PixelWidth}x{flattened.PixelHeight})");
+        return 0;
+    }
+
+    private static int DescribeProject(string path)
+    {
+        var (png, document, info) = ProjectFile.Load(path);
+        Console.WriteLine($"image path  {info?.ImagePath ?? "(none)"}");
+        Console.WriteLine($"original    {document.Width}x{document.Height}, {png.Length} bytes of PNG");
+        Console.WriteLine($"crop        {(document.Crop is { } c ? c.ToString() : "(none)")}");
+        foreach (var item in document.Items)
+        {
+            Console.WriteLine($"item        {item.GetType().Name,-14} {item.Bounds}  stroke {item.Style.Stroke}");
+        }
+
+        return 0;
+    }
+
+    private static PixelBuffer DecodeImage(byte[] bytes)
+    {
+        using var stream = new MemoryStream(bytes);
+        var frame = System.Windows.Media.Imaging.BitmapDecoder.Create(
+            stream,
+            System.Windows.Media.Imaging.BitmapCreateOptions.PreservePixelFormat,
+            System.Windows.Media.Imaging.BitmapCacheOption.OnLoad).Frames[0];
+        return Grably.App.Imaging.BitmapConversion.ToPixelBuffer(frame);
+    }
+
+    private static int RunSta(Func<int> action)
+    {
+        var result = 1;
+        Exception? error = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                result = action();
+            }
+            catch (Exception ex)
+            {
+                error = ex;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+        if (error is not null)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
+        }
+
+        return result;
+    }
+
+    private static int SendKeys(string gestureText, string? requiredForeground)
     {
         var gesture = HotkeyGesture.Parse(gestureText);
+
+        // Keys like Esc, Alt+F4 or Ctrl+S go to whatever window is in front: refuse unless it is the expected one.
+        if (requiredForeground is not null)
+        {
+            var text = requiredForeground.TrimStart('*');
+            var title = WindowEnumerator.GetForegroundWindow()?.Title ?? string.Empty;
+            var matches = requiredForeground.StartsWith('*')
+                ? title.Contains(text, StringComparison.OrdinalIgnoreCase)
+                : title == text;
+            if (!matches)
+            {
+                Console.WriteLine($"FAIL send-keys {gesture}: the window in front is '{title}', not '{requiredForeground}'; nothing was sent");
+                return 1;
+            }
+        }
+
         var sent = InputSimulator.SendGesture(gesture);
         var expected = 2 + (2 * System.Numerics.BitOperations.PopCount((uint)gesture.Modifiers));
         Console.WriteLine(sent == expected

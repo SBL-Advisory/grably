@@ -12,6 +12,8 @@ src/Grably.App/bin/Debug/net10.0-windows10.0.26100.0/Grably.exe                 
 Grably.exe --background                                                            # start without opening the Library
 Grably.exe --ui-snapshot Library --out library.png [--theme light|dark]            # Debug builds: render a window to PNG
 tools/Grably.DevCli/bin/Debug/net10.0-windows10.0.26100.0/grably-dev.exe help      # dev harness commands
+powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/capture.ps1     # end-to-end checks on the real desktop
+powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/editor.ps1      #   (see tests/E2E/README.md)
 python tools/brand/build_brand.py                                                  # regenerate assets/brand
 ./tools/bump-version.ps1 patch                                                     # bump <Version> in Directory.Build.props
 ```

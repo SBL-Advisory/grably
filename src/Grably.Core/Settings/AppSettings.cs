@@ -1,3 +1,4 @@
+using Grably.Core.Annotations;
 using Grably.Core.Hotkeys;
 
 namespace Grably.Core.Settings;
@@ -21,6 +22,8 @@ public sealed class AppSettings
 
     public RecordingSettings Recording { get; set; } = new();
 
+    public EditorSettings Editor { get; set; } = new();
+
     public static Dictionary<HotkeyAction, HotkeyGesture> DefaultHotkeys() => new()
     {
         [HotkeyAction.CaptureRegion] = HotkeyGesture.Parse("PrintScreen"),
@@ -38,6 +41,8 @@ public sealed class AppSettings
         General ??= new GeneralSettings();
         Screenshot ??= new ScreenshotSettings();
         Recording ??= new RecordingSettings();
+        Editor ??= new EditorSettings();
+        Editor.ToolStyles ??= [];
         Hotkeys ??= [];
         foreach (var (action, gesture) in DefaultHotkeys())
         {
@@ -63,6 +68,12 @@ public sealed class GeneralSettings
 
     /// <summary>Null means the default (Videos\Grably).</summary>
     public string? VideosFolder { get; set; }
+}
+
+public sealed class EditorSettings
+{
+    /// <summary>The last style used with each editor tool, so the next annotation looks like the previous one.</summary>
+    public Dictionary<EditorTool, AnnotationStyle> ToolStyles { get; set; } = [];
 }
 
 public enum AppTheme

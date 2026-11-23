@@ -31,7 +31,7 @@ public static class Program
             if (guard is null)
             {
                 log.Information("{App} is already running; forwarding this launch to it", AppInfo.Name);
-                if (SingleInstanceGuard.SendToPrimary(AppInfo.Id, args, TimeSpan.FromSeconds(3)))
+                if (SingleInstanceGuard.SendToPrimary(AppInfo.Id, ForwardedArguments(args), TimeSpan.FromSeconds(3)))
                 {
                     return 0;
                 }
@@ -57,6 +57,14 @@ public static class Program
             Log.CloseAndFlush();
         }
     }
+
+    /// <summary>
+    /// The arguments to hand to the running instance, with file paths made absolute: the running instance has its
+    /// own working directory, so "Grably.exe shot.png" from a terminal would otherwise open the wrong file.
+    /// </summary>
+    public static string[] ForwardedArguments(IEnumerable<string> args) =>
+        args.Select(a => !a.StartsWith("--", StringComparison.Ordinal) && System.IO.File.Exists(a) ? System.IO.Path.GetFullPath(a) : a)
+            .ToArray();
 
     private static int Run(LaunchOptions options, AppPaths paths, SingleInstanceGuard? guard)
     {

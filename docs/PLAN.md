@@ -8,8 +8,8 @@ Each milestone is one GitHub issue and one stacked PR (each branch starts from t
 
 - [x] M0 Logo and brand assets - issue #1, PR #2
 - [x] M1 Scaffold - issue #3, PR #4
-- [x] M2 Screenshot capture - issue #5
-- [ ] M3 Annotation editor
+- [x] M2 Screenshot capture - issue #5, PR #6
+- [x] M3 Annotation editor - issue #7
 - [ ] M4 Library and Settings UI
 - [ ] M5 OCR and scrolling capture
 - [ ] M6 Recording engine, video only
@@ -34,6 +34,18 @@ Decisions made while building, which take precedence over the plan text below:
 - **Full-screen capture** takes the monitor under the pointer. **Window capture** crops the frozen desktop to the foreground window's visible frame, so anything covering that window is included (what you see is what you get).
 - **Overlay logic** lives in `Grably.Core/Capture/RegionSelection` (unit-tested state machine); the WPF overlay only draws it and feeds it physical pointer positions from `GetCursorPos`.
 - **End-to-end checks** drive the real app with `grably-dev send-keys`, `wait-window` and `mouse` (which refuses to click unless a named Grably window is visible). Verified on a two-monitor 100 %/125 % setup: a drag across the monitor seam captures the exact pixel area.
+- **Overlay pointer positions** come from each mouse event (`PointToScreen`), not `GetCursorPos`: a late-handled mouse-down otherwise starts the selection where the cursor has moved to (found by the M3 end-to-end run).
+- **Editor logic** lives in `Grably.Core/Annotations/AnnotationEditor` (tools, gestures, selection, z-order, styles, crop, undo), unit-tested without WPF. The WPF `EditorCanvas` draws and forwards input; one `AnnotationRenderer` draws both the screen and the export.
+- **Projects are created on first save,** not at capture time: until the image is annotated, the saved PNG is itself the original. A `.grably` zip holds `original.png`, `document.json` and `project.json` (the flattened image's path). `Grably.exe <file>` opens an image or project in the editor (forwarded to the running instance).
+- **Blur and pixelate** are computed in Core (`ImageFilters`) from the original pixels, so redaction never reveals other annotations and re-renders identically.
+- **Soft shadow** is drawn as three offset, very transparent copies of the shape (no bitmap effects), so it is identical on screen and in exports.
+- **Last-used style per tool** is kept in `settings.editor.toolStyles` and saved when an editor closes.
+- **Never losing or misplacing work:**
+  - Tray Exit asks every edited editor first (`CloseCoordinator`) and aborts on Cancel, because WPF ignores Cancel during `Shutdown`.
+  - Windows sign-out keeps unsaved annotations in their projects without asking.
+  - Save only overwrites captures, Save as results, and project image paths inside a screenshots folder or recorded by Grably's own projects.
+  - An opened image file is never overwritten: its first save is a Save as.
+- **End-to-end scripts** live in `tests/E2E` (scratch copies get wiped between sessions). Run them after changes to capture or the editor.
 
 ## The plan
 

@@ -123,6 +123,14 @@ public sealed class AppCommands(
     public void Exit()
     {
         logger.LogInformation("Exit requested");
+
+        // Ask about unsaved editors first: during Shutdown, WPF ignores a window's request to stay open.
+        if (!services.GetRequiredService<Editor.EditorService>().ConfirmCloseAll())
+        {
+            logger.LogInformation("Exit cancelled to keep unsaved changes");
+            return;
+        }
+
         Application.Current.Shutdown();
     }
 

@@ -20,10 +20,20 @@ public sealed class HotkeyController(
         ApplyFromSettings();
     }
 
+    private Dictionary<HotkeyAction, HotkeyGesture>? _applied;
+
     private void ApplyFromSettings()
     {
         // Pause is only registered while recording, so it does not hold on to the key combination otherwise.
-        var bindings = settings.Current.Hotkeys.Where(b => b.Key != HotkeyAction.PauseRecording);
+        var bindings = settings.Current.Hotkeys.Where(b => b.Key != HotkeyAction.PauseRecording)
+            .ToDictionary(b => b.Key, b => b.Value);
+        if (_applied is not null && _applied.Count == bindings.Count && !_applied.Except(bindings).Any()
+            && Registrations.All(r => r.Succeeded))
+        {
+            return; // settings were saved for another reason and every hotkey is registered
+        }
+
+        _applied = bindings;
         Registrations = hotkeys.Apply(bindings);
         var failed = Registrations.Where(r => !r.Succeeded).ToList();
         if (failed.Count > 0)

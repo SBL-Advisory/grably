@@ -24,6 +24,9 @@ public partial class App : Application
         // Grably lives in the tray: closing the last window must not end the process.
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         DispatcherUnhandledException += OnDispatcherUnhandledException;
+
+        // Sign-out or shutdown closes windows without asking; keep unsaved annotations in their projects.
+        SessionEnding += (_, _) => _services.GetService<Editor.EditorService>()?.SaveForSessionEnd();
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             _logger.LogCritical(e.ExceptionObject as Exception, "Unhandled error (terminating: {Terminating})", e.IsTerminating);
         TaskScheduler.UnobservedTaskException += (_, e) =>
@@ -36,12 +39,29 @@ public partial class App : Application
     /// <summary>Another Grably.exe was started while this one runs (it forwards its arguments and exits).</summary>
     public void OnLaunchedAgain(string[] args)
     {
-        if (LaunchOptions.Parse(args).Background)
+        var options = LaunchOptions.Parse(args);
+        if (options.Background)
         {
             return; // e.g. a second start-with-Windows launch: nothing to show
         }
 
-        Dispatcher.BeginInvoke(() => _services.GetRequiredService<AppCommands>().OpenLibrary());
+        Dispatcher.BeginInvoke(() => OpenRequested(options));
+    }
+
+    /// <summary>Opens the files a launch asked for, or the Library when there are none.</summary>
+    private void OpenRequested(LaunchOptions options)
+    {
+        if (options.Files.Count == 0)
+        {
+            _services.GetRequiredService<AppCommands>().OpenLibrary();
+            return;
+        }
+
+        var editors = _services.GetRequiredService<Editor.EditorService>();
+        foreach (var file in options.Files)
+        {
+            editors.OpenFile(file);
+        }
     }
 
     protected override void OnStartup(StartupEventArgs e)
@@ -67,7 +87,7 @@ public partial class App : Application
 
             if (!_options.Background)
             {
-                _services.GetRequiredService<AppCommands>().OpenLibrary();
+                OpenRequested(_options);
             }
         }
         catch (Exception ex)
