@@ -130,6 +130,9 @@ public sealed class ScreenshotSettings
     /// instead of capturing as soon as the mouse button is released.
     /// </summary>
     public bool AdjustBeforeCapture { get; set; }
+
+    /// <summary>Read the text in screenshots (on this PC) so library search finds words inside them.</summary>
+    public bool MakeTextSearchable { get; set; } = true;
 }
 
 public enum AfterCaptureAction

@@ -34,6 +34,9 @@ internal static class Program
         ("project <project.grably>", "List a project's image path, size, crop and annotations."),
         ("library [--search text] [--expect-file f.png [--editable]]",
             "List the library (newest first); with --expect-file, PASS if that file is in it (and has its project)."),
+        ("ocr <image> | --selftest [--out f.png]", "Read the text in an image with Windows OCR; --selftest renders known text (saved with --out) and checks it."),
+        ("stitch --synthetic [--out f.png] | <a.png b.png ...> --out f.png",
+            "Stitch scrolling-capture frames; --synthetic checks a generated page is reproduced exactly."),
     ];
 
     private static int Main(string[] args)
@@ -58,6 +61,8 @@ internal static class Program
                     args.Length > 2 && double.TryParse(args[2], System.Globalization.CultureInfo.InvariantCulture, out var s) ? s : 5,
                     args.Contains("--contains")),
                 "render" => RunSta(() => Render(args[1..])),
+                "ocr" => RunSta(() => TextAndStitchCommands.Ocr(args[1..])),
+                "stitch" => RunSta(() => TextAndStitchCommands.Stitch(args[1..])),
                 "project" when args.Length > 1 => DescribeProject(args[1]),
                 "library" => ListLibrary(OptionValue(args, "--search"), OptionValue(args, "--expect-file"), args.Contains("--editable")),
                 "version" => PrintVersion(),

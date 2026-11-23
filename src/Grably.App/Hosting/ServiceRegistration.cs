@@ -2,12 +2,14 @@ using Grably.App.Capture;
 using Grably.App.Editor;
 using Grably.App.Library;
 using Grably.App.Shell;
+using Grably.App.Text;
 using Grably.App.ViewModels;
 using Grably.App.Views;
 using Grably.Core.Settings;
 using Grably.Platform.Capture;
 using Grably.Platform.Hotkeys;
 using Grably.Platform.Shell;
+using Grably.Platform.Text;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Grably.App.Hosting;
@@ -36,6 +38,10 @@ internal static class ServiceRegistration
         services.AddSingleton<EditorService>();
         services.AddSingleton<LibraryService>();
         services.AddSingleton<LibraryActions>();
+        services.AddSingleton<OcrService>();
+        services.AddSingleton<TextCaptureService>();
+        services.AddSingleton<TextIndexer>();
+        services.AddSingleton<ScrollingCaptureService>();
 
         // Windows and view models
         services.AddTransient<LibraryWindow>();

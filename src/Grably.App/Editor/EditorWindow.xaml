@@ -58,6 +58,7 @@
                 <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon FolderOpen24}" ToolTip="Open an image or Grably project (Ctrl+O)" Click="Open_Click" />
                 <ui:Button x:Name="DragButton" Appearance="Transparent" Icon="{ui:SymbolIcon ArrowExportUp24}" ToolTip="Drag this onto another app to share the image" PreviewMouseMove="DragButton_PreviewMouseMove" />
                 <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon Copy24}" ToolTip="Copy the image (Ctrl+C)" Click="Copy_Click" />
+                <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon ScanText24}" ToolTip="Copy the text in the image (Ctrl+Shift+C)" Click="CopyText_Click" />
                 <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon SaveCopy24}" ToolTip="Save as (Ctrl+Shift+S)" Click="SaveAs_Click" />
                 <ui:Button Margin="4,0,0,0" Appearance="Primary" Icon="{ui:SymbolIcon Save24}" Content="Save" ToolTip="Save (Ctrl+S)" Click="Save_Click" />
             </StackPanel>

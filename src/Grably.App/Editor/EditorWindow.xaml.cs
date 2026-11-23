@@ -258,6 +258,9 @@ public partial class EditorWindow : FluentWindow, IUnsavedWork
                 case Key.Z:
                     _editor.Undo();
                     break;
+                case Key.C when shift:
+                    CopyText();
+                    break;
                 case Key.C:
                     Copy();
                     break;
@@ -607,6 +610,11 @@ public partial class EditorWindow : FluentWindow, IUnsavedWork
     private void Redo_Click(object sender, RoutedEventArgs e) => _editor.Redo();
 
     private void Copy_Click(object sender, RoutedEventArgs e) => _service.CopyImage(_source, _editor.Document);
+
+    private void CopyText_Click(object sender, RoutedEventArgs e) => CopyText();
+
+    /// <summary>The text of the screenshot itself (inside the crop), not of the annotations drawn over it.</summary>
+    private void CopyText() => _ = _service.CopyTextAsync(_source, _editor.Document);
 
     private void Save_Click(object sender, RoutedEventArgs e) => Save();
 

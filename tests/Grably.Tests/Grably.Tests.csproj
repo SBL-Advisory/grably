@@ -23,6 +23,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The generated scrolling page shared with grably-dev stitch -synthetic. -->
+    <Compile Include="..\..\tools\Grably.DevCli\SyntheticPage.cs" Link="Core\SyntheticPage.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Xunit" />
     <!-- UseWPF drops System.IO from the implicit usings (Path clashes with System.Windows.Shapes.Path). -->
     <Using Include="System.IO" />

@@ -83,6 +83,7 @@ public partial class App : Application
             _services.GetRequiredService<Platform.Capture.ForegroundWindowTracker>();
             _services.GetRequiredService<TrayIconController>().Show();
             _services.GetRequiredService<HotkeyController>().Start();
+            _services.GetRequiredService<Text.TextIndexer>().Start();
             _logger.LogInformation("Ready");
 
             if (!_options.Background)

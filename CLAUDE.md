@@ -14,6 +14,7 @@ Grably.exe --ui-snapshot Library --out library.png [--theme light|dark]         
 tools/Grably.DevCli/bin/Debug/net10.0-windows10.0.26100.0/grably-dev.exe help      # dev harness commands
 powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/capture.ps1     # end-to-end checks on the real desktop
 powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/editor.ps1      #   (see tests/E2E/README.md)
+powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/scrolling.ps1   #   scrolling capture and capture text
 python tools/brand/build_brand.py                                                  # regenerate assets/brand
 ./tools/bump-version.ps1 patch                                                     # bump <Version> in Directory.Build.props
 ```

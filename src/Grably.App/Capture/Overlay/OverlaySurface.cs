@@ -171,7 +171,7 @@ public sealed class OverlaySurface : FrameworkElement
 
     private void DrawHint(DrawingContext dc, Rect full, double s)
     {
-        var text = Text("Click a window or drag to select an area. Esc cancels.", s);
+        var text = Text(_selection.Hint, s);
         var padding = new Size(12 / s, 6 / s);
         var box = new Size(text.Width + (2 * padding.Width), text.Height + (2 * padding.Height));
         var origin = new Point((full.Width - box.Width) / 2, 24 / s);

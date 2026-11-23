@@ -157,6 +157,7 @@ public sealed class LibraryService(AppPaths paths, ILogger<LibraryService> logge
                 Width = flattened.PixelWidth,
                 Height = flattened.PixelHeight,
                 Bytes = SizeOf(filePath),
+                OcrText = null, // read again: the saved image has new text annotations, or a crop
             };
             Repository.Update(updated);
             return updated;

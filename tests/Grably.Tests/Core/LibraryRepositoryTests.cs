@@ -184,4 +184,37 @@ public sealed class LibraryRepositoryTests : IDisposable
     [InlineData("a\"b", "\"a\"* \"b\"*")]
     public void Match_text_is_built_safely(string? text, string? expected) =>
         Assert.Equal(expected, LibraryRepository.BuildMatch(text));
+
+    [Fact]
+    public void Screenshots_wait_for_their_text_newest_first_and_become_searchable_once_read()
+    {
+        var repository = new LibraryRepository(DbPath);
+        var older = repository.Add(Shot("older", DateTime.UtcNow.AddDays(-1)));
+        var newer = repository.Add(Shot("newer", DateTime.UtcNow));
+        repository.Add(Shot("video", DateTime.UtcNow) with { Kind = LibraryItemKind.Recording });
+        repository.Add(new LibraryItem { ProjectPath = Path.Combine(_folder, "p.grably"), Title = "project only" });
+
+        Assert.Equal([newer, older], repository.WithoutText(10, []).Select(i => i.Id));
+        Assert.Equal([older], repository.WithoutText(10, [newer]).Select(i => i.Id));
+
+        var waiting = repository.WithoutText(10, []).ToDictionary(i => i.Id);
+        Assert.True(repository.SetText(waiting[newer], "Quarterly revenue by region"));
+        Assert.True(repository.SetText(waiting[older], "")); // read, nothing found: not asked again
+
+        Assert.Empty(repository.WithoutText(10, []));
+        Assert.Equal(newer, Assert.Single(repository.Query(new LibraryQuery("revenue regi"))).Id);
+    }
+
+    [Fact]
+    public void Text_read_from_an_image_that_was_saved_again_meanwhile_is_not_stored()
+    {
+        var repository = new LibraryRepository(DbPath);
+        var id = repository.Add(Shot("shot", DateTime.UtcNow));
+        var read = repository.WithoutText(10, []).Single();
+
+        repository.Update(read with { Bytes = read.Bytes + 100, ThumbnailPath = "new-thumb.jpg" }); // the editor saved it
+
+        Assert.False(repository.SetText(read, "old text"));
+        Assert.Equal(id, repository.WithoutText(10, []).Single().Id); // still waiting for a fresh read
+    }
 }

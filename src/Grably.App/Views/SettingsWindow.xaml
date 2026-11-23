@@ -144,6 +144,19 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
+                <!-- Library -->
+                <TextBlock Style="{StaticResource Section}" Text="Library" />
+                <ui:CardControl Icon="{ui:SymbolIcon ScanText24}">
+                    <ui:CardControl.Header>
+                        <StackPanel>
+                            <TextBlock Text="Make text in screenshots searchable" />
+                            <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
+                                       Text="Grably reads the text in your screenshots, on this PC, so searching the library finds words inside them." />
+                        </StackPanel>
+                    </ui:CardControl.Header>
+                    <ui:ToggleSwitch IsChecked="{Binding Draft.Screenshot.MakeTextSearchable}" />
+                </ui:CardControl>
+
                 <!-- General -->
                 <TextBlock Style="{StaticResource Section}" Text="General" />
                 <ui:CardControl Header="Theme" Icon="{ui:SymbolIcon DarkTheme24}">

@@ -92,9 +92,9 @@ public sealed class AppCommands(
     public void CaptureLastUserWindow() =>
         _ = screenshots.CaptureAsync(CaptureKind.Window, foregroundTracker.LastUserWindow is var w and not 0 ? w : null);
 
-    public void ScrollingCapture() => NotYet("Scrolling capture", "M5");
+    public void ScrollingCapture() => _ = services.GetRequiredService<ScrollingCaptureService>().CaptureAsync();
 
-    public void CaptureText() => NotYet("Text capture", "M5");
+    public void CaptureText() => _ = services.GetRequiredService<Text.TextCaptureService>().CaptureAsync();
 
     public void ToggleRecording() => NotYet("Screen recording", "M7");
 

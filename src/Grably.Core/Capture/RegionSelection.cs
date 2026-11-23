@@ -67,6 +67,9 @@ public sealed class RegionSelection
 
     public bool AdjustBeforeCapture { get; }
 
+    /// <summary>The instruction shown at the top of the overlay; each capture mode says what the area is for.</summary>
+    public string Hint { get; init; } = "Click a window or drag to select an area. Esc cancels.";
+
     public SelectionPhase Phase { get; private set; } = SelectionPhase.Pointing;
 
     public PixelPoint Pointer { get; private set; }

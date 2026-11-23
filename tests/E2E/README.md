@@ -8,14 +8,16 @@ Run them from the repository root after a Debug build, on an unlocked desktop yo
 dotnet build Grably.slnx
 powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/capture.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/editor.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/scrolling.ps1
 ```
 
 Each script uses its own `GRABLY_HOME` under `%TEMP%`, so your settings, library and pictures are never touched, and deletes it at the end because the captures contain whatever was on screen. Pass `-Keep` to keep it for inspection.
 
 | Script | Checks |
 |---|---|
-| `capture.ps1` | Full-screen, window and region capture sizes; a region dragged across the first monitor boundary (if there are two monitors) is pixel exact; the clipboard matches; Esc, right-click and Alt+F4 cancel without saving and the next capture still works |
-| `editor.ps1` | A region capture opens the editor; a drawn arrow is saved into the PNG with Ctrl+S; the project lists the arrow and re-renders byte-identically; the saved editor closes without a prompt; `Grably.exe <project>` reopens it |
+| `capture.ps1` | Full-screen, window and region capture sizes; the region capture is in the library; a region dragged across the first monitor boundary (if there are two monitors) is pixel exact; the clipboard matches; Esc, right-click and Alt+F4 cancel without saving and the next capture still works |
+| `editor.ps1` | A region capture opens the editor; a drawn arrow is saved into the PNG with Ctrl+S; the project lists the arrow and re-renders byte-identically; the library links the project; the saved editor closes without a prompt; `Grably.exe <project>` reopens it |
+| `scrolling.ps1` | A scrolling capture of a 400-line file in Notepad is several times taller than the window and, read back with OCR, contains the first, middle and last lines with none repeated; capture text copies the window's text |
 
 Every line starting with `FAIL` is a failure; the scripts exit with code 1 if any check failed.
 

@@ -130,6 +130,43 @@ public sealed class LibraryRepository
         return command.ExecuteScalar() is string result && result == "ok";
     }
 
+    /// <summary>Screenshots whose text has not been read yet, newest first (the ones people search for first).</summary>
+    public IReadOnlyList<LibraryItem> WithoutText(int limit, IReadOnlyCollection<long> skip)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        var exclude = skip.Count == 0 ? "" : $"AND id NOT IN ({string.Join(',', skip)})";
+        command.CommandText = $"""
+            SELECT {Columns} FROM items
+            WHERE ocr_text IS NULL AND kind = 'Screenshot' AND file_path IS NOT NULL {exclude}
+            ORDER BY created_utc DESC, id DESC LIMIT $limit;
+            """;
+        command.Parameters.AddWithValue("$limit", limit);
+        return Read(command);
+    }
+
+    /// <summary>
+    /// Stores the text found in an item's image (empty when there is none), which makes it searchable. Only when the
+    /// item is unchanged since <paramref name="item"/> was read: a save meanwhile (new image, new thumbnail) asks for a
+    /// fresh read, and stale text must not answer it.
+    /// </summary>
+    /// <returns>Whether the text was stored.</returns>
+    public bool SetText(LibraryItem item, string text)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE items SET ocr_text = $text
+            WHERE id = $id AND ocr_text IS NULL AND file_path IS $file AND thumb_path IS $thumb AND bytes = $bytes;
+            """;
+        command.Parameters.AddWithValue("$text", text);
+        command.Parameters.AddWithValue("$id", item.Id);
+        command.Parameters.AddWithValue("$file", item.FilePath is null ? DBNull.Value : Path.GetFullPath(item.FilePath));
+        command.Parameters.AddWithValue("$thumb", (object?)item.ThumbnailPath ?? DBNull.Value);
+        command.Parameters.AddWithValue("$bytes", item.Bytes);
+        return command.ExecuteNonQuery() == 1;
+    }
+
     /// <summary>Replaces every field of the item with this id.</summary>
     public void Update(LibraryItem item)
     {

@@ -43,8 +43,8 @@ internal static class UiSnapshot
             {
                 "library" => RenderWindow(SampleLibrary(services, scratch, withItems: true)),
                 "libraryempty" => RenderWindow(SampleLibrary(services, scratch, withItems: false)),
-                "settings" => RenderWindow(SampleSettings(services, conflict: false), height: 1800),
-                "settingsconflict" => RenderWindow(SampleSettings(services, conflict: true), height: 1800),
+                "settings" => RenderWindow(SampleSettings(services, conflict: false), height: 1950),
+                "settingsconflict" => RenderWindow(SampleSettings(services, conflict: true), height: 1950),
                 "overlayhover" => RenderOverlay(OverlayScenario.Hover),
                 "overlaydrag" => RenderOverlay(OverlayScenario.Drag),
                 "overlayadjust" => RenderOverlay(OverlayScenario.Adjust),

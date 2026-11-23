@@ -79,3 +79,10 @@ WINEVENT_OUTOFCONTEXT
 SHFileOperation
 FO_DELETE
 FILEOPERATION_FLAGS
+
+// Keep Grably's own status windows out of captures
+SetWindowDisplayAffinity
+WINDOW_DISPLAY_AFFINITY
+
+// Scrolling capture waits until no modifier key is held (Ctrl or Shift would turn the wheel into zoom or sideways)
+GetAsyncKeyState

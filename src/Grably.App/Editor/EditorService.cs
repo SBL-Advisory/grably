@@ -8,6 +8,7 @@ using Grably.App.Shell;
 using Grably.Core;
 using Grably.Core.Annotations;
 using Grably.Core.Capture;
+using Grably.Core.Geometry;
 using Grably.Core.Imaging;
 using Grably.Core.Library;
 using Grably.Core.Settings;
@@ -199,6 +200,14 @@ public sealed class EditorService(
             notifications.Show($"Could not save {Path.GetFileName(path)}: {ex.Message}");
             return false;
         }
+    }
+
+    /// <summary>Copies the text of the original image inside the crop (annotations are not read).</summary>
+    public Task CopyTextAsync(EditorDocumentSource source, AnnotationDocument document)
+    {
+        var area = document.ViewArea;
+        var image = area == new PixelRect(0, 0, source.Original.Width, source.Original.Height) ? source.Original : source.Original.Crop(area);
+        return services.GetRequiredService<Text.TextCaptureService>().CopyTextAsync(image, "Editor text copy");
     }
 
     public void CopyImage(EditorDocumentSource source, AnnotationDocument document)
