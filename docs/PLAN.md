@@ -11,8 +11,8 @@ Each milestone is one GitHub issue and one stacked PR (each branch starts from t
 - [x] M2 Screenshot capture - issue #5, PR #6
 - [x] M3 Annotation editor - issue #7, PR #8
 - [x] M4 Library and Settings UI - issue #9, PR #10
-- [x] M5 OCR and scrolling capture - issue #11
-- [ ] M6 Recording engine, video only
+- [x] M5 OCR and scrolling capture - issue #11, PR #12
+- [x] M6 Recording engine, video only - issue #13
 - [ ] M7 Audio and recording UX
 - [ ] M8 Cursor effects and webcam
 - [ ] M9 Trim editor and export
@@ -58,6 +58,25 @@ Decisions made while building, which take precedence over the plan text below:
 - **`Core/Imaging/ScrollStitcher`** compares rows on a band of columns without the scrollbar strip. Rows count as the same only when nearly every pixel matches: sampled columns made lines that differ in one digit ("Line 001", "Line 004") look identical, so sticky bands grew into the content and the capture stopped after one step (found in review; `ScrollStitcherTextTests` covers it with rendered text). A quick search on sampled columns proposes offsets, and full rows confirm them. A match tolerates up to 15 % differing rows (a hover highlight, a caret) and ignores single-colour rows, preferring the expected distance when repeating content allows several. Sticky headers and footers appear once.
 - **Scrolling capture endings:** the bottom of the page (no movement twice), Esc or Stop, the pointer leaving its resting spot, a held key, repeated mismatches (it steps back and halves the step first), or 30,000 px. Early endings are explained in a notification. The status panel sits outside the area and is excluded from capture (`SetWindowDisplayAffinity`).
 - **Known limit:** apps that scroll by fractional device pixels (browsers at 125 % scaling) re-render text slightly differently at each position. Such pages may stitch with mismatches, to be checked in the M11 hardening pass.
+- **ffmpeg** is the LGPL v3 shared build `n9.0.2-39-g7adfbe40dc` from the FFmpeg-Builds month-end release of 2026-10-31 (kept two years), pinned by URL and SHA256 in `tools/fetch-ffmpeg.ps1`. It is copied next to `Grably.exe`, `grably-dev` and the tests. `FfmpegLocator` uses it, an explicit override, or PATH only with `GRABLY_FFMPEG_ALLOW_PATH=1`.
+- **Encoders** are chosen by a real 5-frame encode at the output size (`EncoderProbe`), in the order NVENC, QSV, AMF, Media Foundation, then HEVC, then smaller sizes. OpenH264 was dropped from the plan's list: Cisco's patent licence covers only Cisco's own binaries, not one built into ffmpeg, and Media Foundation (part of Windows) is the licensed software fallback. On the development machine NVENC and AMF are listed but fail, and QSV wins. Quality options come from `ffmpeg -h encoder=...` (QSV `-global_quality`, Media Foundation quality mode, OpenH264 a bitrate from the pixel rate).
+- **Recording engine** (`Platform/Recording`):
+  - Capture: Windows.Graphics.Capture copies each frame into its own texture.
+  - Compositor: a thread draws frame N at time N / fps with Direct2D (crop, scale, letterbox).
+  - Readback: the GPU video processor converts to NV12 (BT.709, limited range); BGRA is read back when it cannot.
+  - Writing: a buffer pool of about 128 MB feeds ffmpeg's stdin. Late frames are repeated (`FramePacer`), and when the encoder falls behind the newest frame is repeated instead of read back, so the duration always matches the clock.
+  - Output: a Matroska intermediate in `sessions/{id}`, remuxed to MP4 with `+faststart`.
+- **COM and WinRT interop** for capture is in `WinRtInterop.cs`: function pointers on the COM vtables (IGraphicsCaptureItemInterop, IDirect3DDxgiInterfaceAccess) and a raw-pointer `CreateDirect3D11DeviceFromDXGIDevice` import. CsWin32's projection would hand back its own COM types where the device is a Vortice object.
+- **Blocker for M10 (release):** the FFmpeg-Builds LGPL package bundles about 40 libraries whose licences need notices and, for LGPL and MPL parts, source. Decide between a minimal custom LGPL build (preferred: only what Grably uses, about 155 MB smaller) and shipping every notice plus a source offer. `THIRD-PARTY-NOTICES.md` says so; nothing may be distributed before this is settled.
+- **Recorder robustness:**
+  - Stop never hangs: a writer stuck on a full pipe gets ffmpeg killed, and what was written stays playable.
+  - Dispose joins the worker threads before freeing GPU objects.
+  - A capture callback racing Dispose is a no-op.
+  - The recorder raises `Failed` when ffmpeg dies mid-recording.
+  - A failed start leaves no orphaned ffmpeg and no "recording" session.
+  - Odd sizes are cropped by a pixel, never resampled.
+  - Window titles go into the session only, never the log.
+- **Measured on the development machine (Intel QSV, 3440x1440 at 125 %):** 30 fps native with no drops and 9.5 ms per frame; 60 fps native with 1 late frame in 8 s; the BGRA fallback keeps up at 30 fps after 3 start-up drops. Test-pattern colours come back within 2 levels on both paths. Captures have no yellow border: borderless capture is granted to the unpackaged app.
 - **UI snapshots** for the Library, Settings and the empty Library use throwaway sample data in a temporary folder, never the user's library: `--ui-snapshot Library|LibraryEmpty|Settings|SettingsConflict`.
 
 ## The plan

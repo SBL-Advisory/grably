@@ -86,3 +86,7 @@ WINDOW_DISPLAY_AFFINITY
 
 // Scrolling capture waits until no modifier key is held (Ctrl or Shift would turn the wheel into zoom or sideways)
 GetAsyncKeyState
+
+// Recording: 1 ms timer resolution while the frame clock runs
+timeBeginPeriod
+timeEndPeriod

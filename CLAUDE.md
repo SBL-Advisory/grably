@@ -17,6 +17,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/editor.ps1   
 powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/scrolling.ps1   #   scrolling capture and capture text
 python tools/brand/build_brand.py                                                  # regenerate assets/brand
 ./tools/bump-version.ps1 patch                                                     # bump <Version> in Directory.Build.props
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/fetch-ffmpeg.ps1         # download the pinned LGPL ffmpeg (before building, for recording)
+grably-dev record --pattern --seconds 5 | record --monitor 0 | bench --monitor 1    # recording engine checks (ffprobe, colours, drops)
 ```
 
 Set `GRABLY_HOME` to a scratch folder before running the app, DevCli or end-to-end checks so settings, data and logs go there instead of the real profile. Logs: `<data>/logs/grably-YYYYMMDD.log`.
@@ -38,3 +40,4 @@ Set `GRABLY_HOME` to a scratch folder before running the app, DevCli or end-to-e
 - Library APIs move fast (WPF-UI 4.x, NAudio 3.x, Velopack, Vortice): check the package XML docs in `~/.nuget/packages` before using an API from memory.
 - The agent cannot see the screen: make features verifiable through DevCli commands, `--ui-snapshot` images, log lines, ffprobe output or extracted frames. List anything that still needs a human under "Manual checks" in the PR.
 - Never log keystrokes or capture content.
+- Recording uses only the bundled LGPL ffmpeg (`src/Grably.App/ffmpeg`, from `tools/fetch-ffmpeg.ps1`), never the one on PATH, and never libx264.

@@ -1,0 +1,76 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace Grably.Core.Recording;
+
+public enum SessionState
+{
+    /// <summary>Frames are being written; a session still in this state after a restart crashed.</summary>
+    Recording,
+
+    /// <summary>The intermediate is complete and was turned into the final video.</summary>
+    Finished,
+
+    /// <summary>The recording failed; the intermediate may still hold what was recorded.</summary>
+    Failed,
+}
+
+/// <summary>
+/// A recording in progress, kept in <c>sessions/{id}</c> beside its crash-safe Matroska intermediate, so that a
+/// recording interrupted by a crash can be found and recovered on the next start.
+/// </summary>
+public sealed record RecordingSession
+{
+    public const string FileName = "session.json";
+    public const string VideoFileName = "video.mkv";
+
+    private static readonly JsonSerializerOptions Json = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+    };
+
+    public required string Id { get; init; }
+
+    public required DateTime StartedUtc { get; init; }
+
+    /// <summary>What was recorded, for people: "Monitor 1", "Window: Notepad", "Region 800x600 at 100,200".</summary>
+    public required string Target { get; init; }
+
+    public required int Width { get; init; }
+
+    public required int Height { get; init; }
+
+    public required int FrameRate { get; init; }
+
+    public required string Encoder { get; init; }
+
+    public SessionState State { get; init; } = SessionState.Recording;
+
+    /// <summary>The finished video, once there is one.</summary>
+    public string? OutputPath { get; init; }
+
+    public static string NewId(DateTime now) => $"{now:yyyyMMdd-HHmmss}-{Guid.NewGuid().ToString("N")[..6]}";
+
+    public void Save(string folder)
+    {
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, FileName);
+        File.WriteAllText(path + ".tmp", JsonSerializer.Serialize(this, Json));
+        File.Move(path + ".tmp", path, overwrite: true);
+    }
+
+    public static RecordingSession? Load(string folder)
+    {
+        var path = Path.Combine(folder, FileName);
+        try
+        {
+            return File.Exists(path) ? JsonSerializer.Deserialize<RecordingSession>(File.ReadAllText(path), Json) : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+}

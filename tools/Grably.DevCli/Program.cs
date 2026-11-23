@@ -37,6 +37,10 @@ internal static class Program
         ("ocr <image> | --selftest [--out f.png]", "Read the text in an image with Windows OCR; --selftest renders known text (saved with --out) and checks it."),
         ("stitch --synthetic [--out f.png] | <a.png b.png ...> --out f.png",
             "Stitch scrolling-capture frames; --synthetic checks a generated page is reproduced exactly."),
+        ("encoders [--size WxH]", "Probe every candidate video encoder with a real encode at that size (default 1920x1080)."),
+        ("record (--monitor N | --window <title> | --region x,y,w,h | --pattern) [--seconds S] [--fps F] [--bgra] [--out f.mp4]",
+            "Record, save an MP4 and check it: codec, frame rate, duration, no capture border, test-pattern colours."),
+        ("bench [--monitor N | --pattern] [--seconds S] [--fps F] [--bgra]", "Record without keeping it and report dropped and late frames."),
     ];
 
     private static int Main(string[] args)
@@ -63,6 +67,9 @@ internal static class Program
                 "render" => RunSta(() => Render(args[1..])),
                 "ocr" => RunSta(() => TextAndStitchCommands.Ocr(args[1..])),
                 "stitch" => RunSta(() => TextAndStitchCommands.Stitch(args[1..])),
+                "encoders" => RecordingCommands.Encoders(args[1..]),
+                "record" => RecordingCommands.Record(args[1..]),
+                "bench" => RecordingCommands.Bench(args[1..]),
                 "project" when args.Length > 1 => DescribeProject(args[1]),
                 "library" => ListLibrary(OptionValue(args, "--search"), OptionValue(args, "--expect-file"), args.Contains("--editable")),
                 "version" => PrintVersion(),
