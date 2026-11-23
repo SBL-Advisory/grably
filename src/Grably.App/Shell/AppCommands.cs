@@ -18,6 +18,7 @@ public sealed class AppCommands(
     UserNotifications notifications, ILogger<AppCommands> logger)
 {
     private LibraryWindow? _library;
+    private SettingsWindow? _settings;
 
     public void Execute(HotkeyAction action)
     {
@@ -99,7 +100,22 @@ public sealed class AppCommands(
 
     public void PauseRecording() => NotYet("Pause recording", "M7");
 
-    public void OpenSettings() => NotYet("Settings", "M4");
+    public void OpenSettings()
+    {
+        if (_settings is null)
+        {
+            _settings = services.GetRequiredService<SettingsWindow>();
+            _settings.Closed += (_, _) => _settings = null;
+            _settings.Show();
+        }
+
+        if (_settings.WindowState == WindowState.Minimized)
+        {
+            _settings.WindowState = WindowState.Normal;
+        }
+
+        _settings.Activate();
+    }
 
     public void CheckForUpdates() => NotYet("Updates", "M10");
 

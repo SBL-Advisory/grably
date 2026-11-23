@@ -1,0 +1,187 @@
+<ui:FluentWindow
+    x:Class="Grably.App.Views.SettingsWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    xmlns:vm="clr-namespace:Grably.App.ViewModels"
+    xmlns:views="clr-namespace:Grably.App.Views"
+    mc:Ignorable="d"
+    d:DataContext="{d:DesignInstance vm:SettingsViewModel}"
+    Title="Grably settings"
+    Width="760"
+    Height="820"
+    MinWidth="560"
+    MinHeight="480"
+    WindowStartupLocation="CenterScreen"
+    ExtendsContentIntoTitleBar="True"
+    WindowBackdropType="Mica"
+    WindowCornerPreference="Round"
+    Icon="pack://application:,,,/Assets/grably.ico">
+
+    <ui:FluentWindow.Resources>
+        <BooleanToVisibilityConverter x:Key="Visible" />
+        <Style x:Key="Section" TargetType="TextBlock">
+            <Setter Property="Margin" Value="4,20,0,8" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        </Style>
+        <Style TargetType="ui:CardControl" BasedOn="{StaticResource {x:Type ui:CardControl}}">
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+        <Style x:Key="Choice" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+            <Setter Property="MinWidth" Value="220" />
+            <Setter Property="DisplayMemberPath" Value="Label" />
+            <Setter Property="SelectedValuePath" Value="Value" />
+        </Style>
+    </ui:FluentWindow.Resources>
+
+    <Grid x:Name="Root">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar Grid.Row="0" Title="Settings" ShowMaximize="False">
+            <ui:TitleBar.Icon>
+                <ui:ImageIcon Source="pack://application:,,,/Assets/grably-app-icon.png" />
+            </ui:TitleBar.Icon>
+        </ui:TitleBar>
+
+        <ScrollViewer Grid.Row="1" Padding="24,0,24,16" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <!-- After a screenshot -->
+                <TextBlock Style="{StaticResource Section}" Text="After a screenshot" />
+                <ui:CardControl Header="When a screenshot is taken" Icon="{ui:SymbolIcon Screenshot24}">
+                    <ComboBox Style="{StaticResource Choice}" ItemsSource="{Binding AfterCaptureActions}" SelectedValue="{Binding Draft.Screenshot.AfterCapture}" />
+                </ui:CardControl>
+                <ui:CardControl Header="Copy every screenshot to the clipboard" Icon="{ui:SymbolIcon Copy24}">
+                    <ui:ToggleSwitch IsChecked="{Binding Draft.Screenshot.CopyToClipboard}" />
+                </ui:CardControl>
+                <ui:CardControl Icon="{ui:SymbolIcon SelectObject24}">
+                    <ui:CardControl.Header>
+                        <StackPanel>
+                            <TextBlock Text="Adjust the area before capturing" />
+                            <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Keep the selection editable after dragging; press Enter to capture." TextWrapping="Wrap" />
+                        </StackPanel>
+                    </ui:CardControl.Header>
+                    <ui:ToggleSwitch IsChecked="{Binding Draft.Screenshot.AdjustBeforeCapture}" />
+                </ui:CardControl>
+                <ui:CardControl Header="Include the mouse pointer" Icon="{ui:SymbolIcon Cursor24}">
+                    <ui:ToggleSwitch IsChecked="{Binding Draft.Screenshot.IncludeCursor}" />
+                </ui:CardControl>
+                <ui:CardControl Header="Wait before capturing" Icon="{ui:SymbolIcon Timer24}">
+                    <ComboBox Style="{StaticResource Choice}" ItemsSource="{Binding Delays}" SelectedValue="{Binding Draft.Screenshot.DelaySeconds}" />
+                </ui:CardControl>
+
+                <!-- Files -->
+                <TextBlock Style="{StaticResource Section}" Text="Files" />
+                <ui:CardControl Icon="{ui:SymbolIcon Folder24}">
+                    <ui:CardControl.Header>
+                        <StackPanel>
+                            <TextBlock Text="Screenshots folder" />
+                            <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding ScreenshotsFolder}" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </ui:CardControl.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <ui:Button Margin="0,0,6,0" Content="Change" Click="ChangeScreenshotsFolder_Click" />
+                        <ui:Button Content="Default" Click="ResetScreenshotsFolder_Click" />
+                    </StackPanel>
+                </ui:CardControl>
+                <ui:CardControl Icon="{ui:SymbolIcon VideoClip24}">
+                    <ui:CardControl.Header>
+                        <StackPanel>
+                            <TextBlock Text="Recordings folder" />
+                            <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding VideosFolder}" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </ui:CardControl.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <ui:Button Margin="0,0,6,0" Content="Change" Click="ChangeVideosFolder_Click" />
+                        <ui:Button Content="Default" Click="ResetVideosFolder_Click" />
+                    </StackPanel>
+                </ui:CardControl>
+                <ui:CardControl Header="Screenshot format" Icon="{ui:SymbolIcon Image24}">
+                    <ComboBox Style="{StaticResource Choice}" ItemsSource="{Binding Formats}" SelectedValue="{Binding Format}" />
+                </ui:CardControl>
+                <ui:CardControl Header="JPEG quality" Icon="{ui:SymbolIcon ImageEdit24}" Visibility="{Binding IsJpeg, Converter={StaticResource Visible}}">
+                    <StackPanel Orientation="Horizontal">
+                        <Slider Width="180" VerticalAlignment="Center" Minimum="10" Maximum="100" IsSnapToTickEnabled="True" TickFrequency="5" Value="{Binding Draft.Screenshot.JpegQuality}" />
+                        <TextBlock Margin="8,0,0,0" MinWidth="28" VerticalAlignment="Center" Text="{Binding Draft.Screenshot.JpegQuality}" />
+                    </StackPanel>
+                </ui:CardControl>
+
+                <!-- Hotkeys -->
+                <TextBlock Style="{StaticResource Section}" Text="Keyboard shortcuts" />
+                <TextBlock Margin="4,0,0,8" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
+                           Text="Click a box and press the keys you want, such as Ctrl+Shift+S. Backspace removes a shortcut." />
+                <Border
+                    Margin="0,0,0,8"
+                    Padding="12"
+                    CornerRadius="6"
+                    Background="{DynamicResource SystemFillColorCautionBackgroundBrush}"
+                    Visibility="{Binding ShowPrintScreenHint, Converter={StaticResource Visible}}">
+                    <DockPanel>
+                        <ui:Button DockPanel.Dock="Right" Margin="12,0,0,0" Content="Open Windows settings" Click="OpenKeyboardSettings_Click" />
+                        <TextBlock VerticalAlignment="Center" TextWrapping="Wrap"
+                                   Text="Windows is using Print Screen to open the Snipping Tool. Turn off &quot;Use the Print screen key to open screen capture&quot; in Windows settings, or pick other keys." />
+                    </DockPanel>
+                </Border>
+                <ItemsControl ItemsSource="{Binding Hotkeys}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:HotkeyRowViewModel}">
+                            <ui:CardControl Header="{Binding Label}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Margin="0,0,12,0" VerticalAlignment="Center" Text="Used by another app" FontSize="12"
+                                               Foreground="{DynamicResource SystemFillColorCriticalBrush}"
+                                               Visibility="{Binding IsTaken, Converter={StaticResource Visible}}" />
+                                    <views:HotkeyBox Gesture="{Binding Gesture}" RecordingChanged="HotkeyBox_RecordingChanged" />
+                                </StackPanel>
+                            </ui:CardControl>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- General -->
+                <TextBlock Style="{StaticResource Section}" Text="General" />
+                <ui:CardControl Header="Theme" Icon="{ui:SymbolIcon DarkTheme24}">
+                    <ComboBox Style="{StaticResource Choice}" ItemsSource="{Binding Themes}" SelectedValue="{Binding Draft.General.Theme}" />
+                </ui:CardControl>
+                <ui:CardControl Header="Start Grably when I sign in to Windows" Icon="{ui:SymbolIcon Power24}">
+                    <ui:ToggleSwitch IsChecked="{Binding Draft.General.StartWithWindows}" />
+                </ui:CardControl>
+                <ui:CardControl Header="Check for updates automatically" Icon="{ui:SymbolIcon ArrowSync24}">
+                    <ui:ToggleSwitch IsChecked="{Binding Draft.General.CheckForUpdates}" />
+                </ui:CardControl>
+
+                <!-- About -->
+                <TextBlock Style="{StaticResource Section}" Text="About" />
+                <ui:CardControl Icon="{ui:SymbolIcon Info24}">
+                    <ui:CardControl.Header>
+                        <StackPanel>
+                            <TextBlock>
+                                <Run Text="Grably" />
+                                <Run Text="{Binding Version, Mode=OneWay}" />
+                            </TextBlock>
+                            <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Free and open source under the MIT license." />
+                        </StackPanel>
+                    </ui:CardControl.Header>
+                    <ui:Button Content="Open data folder" Click="OpenDataFolder_Click" />
+                </ui:CardControl>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Save bar -->
+        <Border Grid.Row="2" Padding="24,12" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}">
+            <DockPanel LastChildFill="True">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <ui:Button Margin="0,0,8,0" MinWidth="96" Content="Cancel" IsCancel="True" Click="Cancel_Click" />
+                    <ui:Button MinWidth="96" Appearance="Primary" Content="Save" Click="Save_Click" />
+                </StackPanel>
+                <TextBlock VerticalAlignment="Center" TextWrapping="Wrap" Text="{Binding ErrorMessage}" Foreground="{DynamicResource SystemFillColorCriticalBrush}" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</ui:FluentWindow>

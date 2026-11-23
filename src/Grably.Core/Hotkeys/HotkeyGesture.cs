@@ -15,6 +15,33 @@ public readonly record struct HotkeyGesture(HotkeyModifiers Modifiers, int Virtu
 
     public bool IsNone => VirtualKey == 0;
 
+    /// <summary>
+    /// Whether taking this combination system-wide leaves typing and other apps alone. It must use Win, or two of
+    /// Ctrl, Alt and Shift with at least one of Ctrl and Alt, unless its key is one no app needs (PrintScreen, Pause,
+    /// Scroll Lock, F13-F24). "S" or "Shift+S" would swallow a letter everywhere; Ctrl+C, Alt+F4 or F5 alone would
+    /// break copy, closing windows and refresh in every app.
+    /// </summary>
+    public bool IsSafeAsGlobalHotkey
+    {
+        get
+        {
+            if (IsNone || VirtualKey is 0x2C or 0x13 or 0x91 || VirtualKey is >= 0x7C and <= 0x87)
+            {
+                return true; // nothing to break: off, PrintScreen, Pause, Scroll Lock, F13-F24
+            }
+
+            if (Modifiers.HasFlag(HotkeyModifiers.Windows))
+            {
+                return true;
+            }
+
+            var ctrl = Modifiers.HasFlag(HotkeyModifiers.Control);
+            var alt = Modifiers.HasFlag(HotkeyModifiers.Alt);
+            var shift = Modifiers.HasFlag(HotkeyModifiers.Shift);
+            return (ctrl || alt) && (ctrl ? 1 : 0) + (alt ? 1 : 0) + (shift ? 1 : 0) >= 2;
+        }
+    }
+
     public static HotkeyGesture Parse(string text) =>
         TryParse(text, out var gesture) ? gesture : throw new FormatException($"Not a valid hotkey: '{text}'.");
 

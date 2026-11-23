@@ -65,4 +65,28 @@ public class HotkeyGestureTests
             Assert.Equal(code, parsed);
         }
     }
+
+    [Theory]
+    [InlineData("PrintScreen", true)]
+    [InlineData("Shift+PrintScreen", true)]
+    [InlineData("Ctrl+PrintScreen", true)]
+    [InlineData("Pause", true)]
+    [InlineData("F13", true)]
+    [InlineData("F24", true)]
+    [InlineData("Ctrl+Alt+T", true)]
+    [InlineData("Ctrl+Shift+S", true)]
+    [InlineData("Alt+Shift+X", true)]
+    [InlineData("Win+Shift+S", true)]
+    [InlineData("", true)]
+    [InlineData("S", false)]
+    [InlineData("Shift+S", false)]
+    [InlineData("Space", false)]
+    [InlineData("F5", false)]
+    [InlineData("Shift+F12", false)]
+    [InlineData("Ctrl+C", false)]
+    [InlineData("Ctrl+Z", false)]
+    [InlineData("Alt+S", false)]
+    [InlineData("Alt+F4", false)]
+    public void Only_combinations_that_leave_typing_alone_are_safe_as_global_hotkeys(string text, bool safe) =>
+        Assert.Equal(safe, HotkeyGesture.Parse(text).IsSafeAsGlobalHotkey);
 }

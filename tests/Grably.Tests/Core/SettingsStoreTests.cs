@@ -1,3 +1,4 @@
+using Grably.Core.Annotations;
 using Grably.Core.Hotkeys;
 using Grably.Core.Settings;
 
@@ -237,5 +238,60 @@ public sealed class SettingsStoreTests : IDisposable
         store.Save(store.Current);
 
         Assert.Same(store.Current, saved);
+    }
+
+    [Fact]
+    public void A_clone_can_be_edited_without_touching_the_original()
+    {
+        var original = new AppSettings();
+        original.General.ScreenshotsFolder = @"D:\Shots";
+
+        var copy = original.Clone();
+        copy.General.ScreenshotsFolder = @"E:\Elsewhere";
+        copy.Screenshot.JpegQuality = 55;
+        copy.Hotkeys[HotkeyAction.CaptureRegion] = HotkeyGesture.Parse("Ctrl+Shift+S");
+
+        Assert.Equal(@"D:\Shots", original.General.ScreenshotsFolder);
+        Assert.Equal(90, original.Screenshot.JpegQuality);
+        Assert.Equal(HotkeyGesture.Parse("PrintScreen"), original.Hotkeys[HotkeyAction.CaptureRegion]);
+        Assert.Equal(@"D:\Shots", original.Clone().General.ScreenshotsFolder);
+    }
+
+    [Fact]
+    public void Saving_the_settings_window_keeps_changes_made_elsewhere_meanwhile()
+    {
+        var current = new AppSettings();
+        var draft = current.Clone(); // the window opens
+        current.Editor.ToolStyles[EditorTool.Arrow] = new AnnotationStyle { Thickness = 9 }; // an editor closes
+        current.Recording.FrameRate = 60;
+        draft.General.Theme = AppTheme.Dark;
+        draft.Screenshot.AfterCapture = AfterCaptureAction.ShowPreview;
+        draft.Hotkeys[HotkeyAction.CaptureRegion] = HotkeyGesture.Parse("Ctrl+Shift+S");
+
+        var saved = current.WithWindowSectionsFrom(draft);
+
+        Assert.Equal(AppTheme.Dark, saved.General.Theme);
+        Assert.Equal(AfterCaptureAction.ShowPreview, saved.Screenshot.AfterCapture);
+        Assert.Equal(HotkeyGesture.Parse("Ctrl+Shift+S"), saved.Hotkeys[HotkeyAction.CaptureRegion]);
+        Assert.Equal(9, saved.Editor.ToolStyles[EditorTool.Arrow].Thickness);
+        Assert.Equal(60, saved.Recording.FrameRate);
+
+        draft.General.Theme = AppTheme.Light; // the window stays open after a failed save and keeps editing
+        Assert.Equal(AppTheme.Dark, saved.General.Theme);
+        Assert.NotSame(current.Editor, saved.Editor);
+    }
+
+    [Fact]
+    public void Duplicate_hotkeys_are_found_and_turned_off_ones_never_clash()
+    {
+        var settings = new AppSettings();
+        Assert.Null(settings.FindDuplicateHotkey());
+
+        settings.Hotkeys[HotkeyAction.CaptureText] = HotkeyGesture.None;
+        settings.Hotkeys[HotkeyAction.PauseRecording] = HotkeyGesture.None;
+        Assert.Null(settings.FindDuplicateHotkey());
+
+        settings.Hotkeys[HotkeyAction.CaptureFullScreen] = HotkeyGesture.Parse("PrintScreen");
+        Assert.Equal(HotkeyGesture.Parse("PrintScreen"), settings.FindDuplicateHotkey());
     }
 }

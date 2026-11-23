@@ -48,6 +48,8 @@ try {
         Check (($listing | Select-String 'LineItem').Count -eq 1) 'the project holds the arrow'
         & $DevCli render $project.FullName --out "$runHome\rerender.png" | Out-Null
         Check ((Get-FileHash $capture.FullName).Hash -eq (Get-FileHash "$runHome\rerender.png").Hash) 'the project re-renders byte-identically'
+        $listed = & $DevCli library --expect-file $capture.FullName --editable | Select-Object -Last 1
+        Check ($listed -like 'PASS*') 'the library item links the saved project, so it reopens editable'
     }
 
     Send-KeysTo 'Alt+F4' '* - Grably' | Out-Null

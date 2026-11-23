@@ -6,6 +6,8 @@
     <SupportedOSPlatformVersion>$(GrablyMinWindows)</SupportedOSPlatformVersion>
     <RootNamespace>Grably.Platform</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Grably ships for 64-bit Windows; some Win32 structs (SHFILEOPSTRUCT) differ on 32-bit. -->
+    <CsWin32PlatformTarget>x64</CsWin32PlatformTarget>
   </PropertyGroup>
 
   <ItemGroup>

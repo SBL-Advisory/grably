@@ -41,6 +41,10 @@ try {
     $file = Wait-NewPng $shots $before
     $size = if ($file) { Get-ImageSize $file.FullName } else { 'none' }
     Check ($size -eq $region.Size) "region $($region.From) to $($region.To) is exactly $($region.Size) (got $size)"
+    if ($file) {
+        $listed = & $DevCli library --expect-file $file.FullName | Select-Object -Last 1
+        Check ($listed -like 'PASS*') 'the region capture is in the library'
+    }
     $clip = [System.Windows.Forms.Clipboard]::GetImage()
     Check ($clip -and "$($clip.Width)x$($clip.Height)" -eq $region.Size) 'clipboard holds the region'
     if ($clip) { $clip.Dispose() }

@@ -69,6 +69,26 @@ public static class ProjectFile
         Save(path, project.OriginalPng, document, project.Info);
     }
 
+    /// <summary>Reads only the info, without the image or the document (cheap, for scanning many projects).</summary>
+    public static ProjectInfo? LoadInfo(string path)
+    {
+        using var zip = ZipFile.OpenRead(path);
+        if (zip.GetEntry(InfoEntry) is not { } entry)
+        {
+            return null;
+        }
+
+        using var reader = new StreamReader(entry.Open(), Encoding.UTF8);
+        return System.Text.Json.JsonSerializer.Deserialize<ProjectInfo>(reader.ReadToEnd(), AnnotationJson.Options);
+    }
+
+    /// <summary>Replaces only the info (the flattened image's path), for example after that image was renamed.</summary>
+    public static void SaveInfo(string path, ProjectInfo info)
+    {
+        var project = Load(path);
+        Save(path, project.OriginalPng, project.Document, info);
+    }
+
     public static (byte[] OriginalPng, AnnotationDocument Document, ProjectInfo? Info) Load(string path)
     {
         using var zip = ZipFile.OpenRead(path);

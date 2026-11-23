@@ -4,6 +4,7 @@ using Grably.Core.Annotations;
 using Grably.Core.Geometry;
 using Grably.Core.Hotkeys;
 using Grably.Core.Imaging;
+using Grably.Core.Library;
 using Grably.Platform.Capture;
 using Grably.Platform.Display;
 using Grably.Platform.Hotkeys;
@@ -31,6 +32,8 @@ internal static class Program
         ("wait-window <title> [seconds] [--contains]", "Wait until a window with that title (or containing it) is visible (default 5 s)."),
         ("render <doc.json image.png | project.grably> --out f.png", "Flatten annotations over their image with the app's renderer."),
         ("project <project.grably>", "List a project's image path, size, crop and annotations."),
+        ("library [--search text] [--expect-file f.png [--editable]]",
+            "List the library (newest first); with --expect-file, PASS if that file is in it (and has its project)."),
     ];
 
     private static int Main(string[] args)
@@ -56,6 +59,7 @@ internal static class Program
                     args.Contains("--contains")),
                 "render" => RunSta(() => Render(args[1..])),
                 "project" when args.Length > 1 => DescribeProject(args[1]),
+                "library" => ListLibrary(OptionValue(args, "--search"), OptionValue(args, "--expect-file"), args.Contains("--editable")),
                 "version" => PrintVersion(),
                 "paths" => PrintPaths(),
                 "hotkey-selftest" => HotkeySelfTest(args.Length > 1 ? args[1] : "Ctrl+Alt+Shift+F24"),
@@ -107,6 +111,41 @@ internal static class Program
         Console.WriteLine($"screenshots  {paths.DefaultScreenshotsFolder}");
         Console.WriteLine($"videos       {paths.DefaultVideosFolder}");
         return 0;
+    }
+
+    private static int ListLibrary(string? search, string? expectFile, bool editable)
+    {
+        var paths = AppPaths.FromEnvironment();
+        if (!File.Exists(paths.LibraryDatabase))
+        {
+            Console.WriteLine($"No library yet at {paths.LibraryDatabase}");
+            return expectFile is null ? 0 : Expect(false, $"{expectFile} is in the library");
+        }
+
+        var repository = new LibraryRepository(paths.LibraryDatabase);
+        var items = repository.Query(new LibraryQuery(search));
+        foreach (var item in items)
+        {
+            Console.WriteLine(
+                $"{item.Id,5} {item.Kind,-10} {item.CreatedUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss} {item.Width}x{item.Height} \"{item.Title}\" "
+                + $"app={item.SourceApp ?? "-"} file={item.FilePath ?? "-"} project={item.ProjectPath ?? "-"}");
+        }
+
+        Console.WriteLine($"{items.Count} of {repository.Count()} item(s)");
+        if (expectFile is null)
+        {
+            return 0;
+        }
+
+        var found = repository.FindByFile(Path.GetFullPath(expectFile));
+        var ok = found is not null && (!editable || (found.ProjectPath is { } project && File.Exists(project)));
+        return Expect(ok, editable ? $"{expectFile} is in the library with its project" : $"{expectFile} is in the library");
+    }
+
+    private static int Expect(bool ok, string what)
+    {
+        Console.WriteLine($"{(ok ? "PASS" : "FAIL")} {what}");
+        return ok ? 0 : 1;
     }
 
     private static int ListMonitors()

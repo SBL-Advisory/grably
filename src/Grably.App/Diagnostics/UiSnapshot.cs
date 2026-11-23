@@ -6,11 +6,17 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Grably.App.Capture.Overlay;
 using Grably.App.Editor;
+using Grably.App.Imaging;
+using Grably.App.Library;
+using Grably.App.ViewModels;
 using Grably.App.Views;
+using Grably.Core;
 using Grably.Core.Annotations;
 using Grably.Core.Capture;
 using Grably.Core.Geometry;
+using Grably.Core.Hotkeys;
 using Grably.Core.Imaging;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -19,22 +25,48 @@ namespace Grably.App.Diagnostics;
 /// <summary>
 /// Debug-only: renders a window or the capture overlay to a PNG and exits, so layouts can be reviewed as images
 /// without anyone looking at the screen.
-/// Usage: Grably.exe --ui-snapshot Library|OverlayHover|OverlayDrag|OverlayAdjust --out file.png [--theme dark]
+/// Usage: Grably.exe --ui-snapshot (window) --out file.png [--theme dark], where window is one of
+/// <see cref="Known"/>. Sample data lives in a temporary folder, never in the user's library.
 /// </summary>
 internal static class UiSnapshot
 {
+    private const string Known =
+        "Library, LibraryEmpty, Settings, SettingsConflict, Editor, OverlayHover, OverlayDrag, OverlayAdjust";
+
     public static int Run(SnapshotRequest request, IServiceProvider services, ILogger logger)
     {
-        var bitmap = request.Window.ToLowerInvariant() switch
+        var scratch = Path.Combine(Path.GetTempPath(), $"grably-snapshot-{Guid.NewGuid():N}");
+        RenderTargetBitmap bitmap;
+        try
         {
-            "library" => RenderWindow(services.GetRequiredService<LibraryWindow>()),
-            "overlayhover" => RenderOverlay(OverlayScenario.Hover),
-            "overlaydrag" => RenderOverlay(OverlayScenario.Drag),
-            "overlayadjust" => RenderOverlay(OverlayScenario.Adjust),
-            "editor" => RenderWindow(SampleEditor(services)),
-            _ => throw new ArgumentException(
-                $"Unknown window '{request.Window}'. Known: Library, Editor, OverlayHover, OverlayDrag, OverlayAdjust."),
-        };
+            bitmap = request.Window.ToLowerInvariant() switch
+            {
+                "library" => RenderWindow(SampleLibrary(services, scratch, withItems: true)),
+                "libraryempty" => RenderWindow(SampleLibrary(services, scratch, withItems: false)),
+                "settings" => RenderWindow(SampleSettings(services, conflict: false), height: 1800),
+                "settingsconflict" => RenderWindow(SampleSettings(services, conflict: true), height: 1800),
+                "overlayhover" => RenderOverlay(OverlayScenario.Hover),
+                "overlaydrag" => RenderOverlay(OverlayScenario.Drag),
+                "overlayadjust" => RenderOverlay(OverlayScenario.Adjust),
+                "editor" => RenderWindow(SampleEditor(services)),
+                _ => throw new ArgumentException($"Unknown window '{request.Window}'. Known: {Known}."),
+            };
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools(); // release the sample database so its folder can go
+            try
+            {
+                if (Directory.Exists(scratch))
+                {
+                    Directory.Delete(scratch, recursive: true);
+                }
+            }
+            catch (IOException ex)
+            {
+                logger.LogDebug(ex, "Could not delete {Folder}", scratch);
+            }
+        }
 
         var output = Path.GetFullPath(request.OutputPath);
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
@@ -50,8 +82,14 @@ internal static class UiSnapshot
         return 0;
     }
 
-    private static RenderTargetBitmap RenderWindow(Window window)
+    /// <param name="height">A taller window than usual, to show a whole scrolling page in one image.</param>
+    private static RenderTargetBitmap RenderWindow(Window window, double? height = null)
     {
+        if (height is { } h)
+        {
+            window.MinHeight = window.MaxHeight = window.Height = h;
+        }
+
         // Show it off-screen so layout and data binding run exactly as they would for the user.
         window.WindowStartupLocation = WindowStartupLocation.Manual;
         window.ShowActivated = false;
@@ -71,7 +109,10 @@ internal static class UiSnapshot
         {
             var background = Application.Current.TryFindResource("ApplicationBackgroundBrush") as Brush ?? Brushes.White;
             dc.DrawRectangle(background, null, new Rect(size));
-            dc.DrawRectangle(new VisualBrush(root), null, new Rect(size));
+            // Map exactly the root's own area: by default a VisualBrush stretches the content bounds, which include
+            // anything overflowing the window, and squashes the picture.
+            var brush = new VisualBrush(root) { Viewbox = new Rect(size), ViewboxUnits = BrushMappingMode.Absolute, Stretch = Stretch.Fill };
+            dc.DrawRectangle(brush, null, new Rect(size));
         }
 
         var bitmap = new RenderTargetBitmap(
@@ -159,6 +200,78 @@ internal static class UiSnapshot
         window.Height = 820;
         window.Editor.Tool = EditorTool.Select;
         window.Editor.Select(rect);
+        return window;
+    }
+
+    /// <summary>The Library over a throwaway library with a few screenshots: editable, plain and missing.</summary>
+    private static LibraryWindow SampleLibrary(IServiceProvider services, string folder, bool withItems)
+    {
+        var paths = new AppPaths(
+            Path.Combine(folder, "roaming"), Path.Combine(folder, "local"), Path.Combine(folder, "Pictures"), Path.Combine(folder, "Videos"));
+        var library = new LibraryService(paths, services.GetRequiredService<ILogger<LibraryService>>());
+        if (withItems)
+        {
+            (string Title, string App, double HoursAgo, int Width, int Height, bool Editable, bool Missing)[] samples =
+            [
+                ("Grably_2026-11-22_15-30-05", "Code", 0.5, 1280, 800, true, false),
+                ("Checkout error", "msedge", 3, 960, 600, false, false),
+                ("Grably_2026-11-21_09-12-44", "ms-teams", 26, 1600, 900, true, false),
+                ("Quarterly chart", "EXCEL", 50, 800, 800, false, false),
+                ("Grably_2026-11-18_17-02-10", "explorer", 100, 1920, 1080, false, true),
+                ("Login form", "chrome", 150, 700, 900, false, false),
+            ];
+            Directory.CreateDirectory(paths.DefaultScreenshotsFolder);
+            Directory.CreateDirectory(paths.ProjectsFolder);
+            foreach (var sample in samples)
+            {
+                var area = new PixelRect(0, 0, sample.Width, sample.Height);
+                var window = new PixelRect(sample.Width / 8, sample.Height / 8, sample.Width * 5 / 8, sample.Height / 2);
+                var image = SyntheticDesktop(area, window).ToBitmapSource();
+                var file = Path.Combine(paths.DefaultScreenshotsFolder, sample.Title + ".png");
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(image));
+                using (var stream = File.Create(file))
+                {
+                    encoder.Save(stream);
+                }
+
+                var project = Path.Combine(paths.ProjectsFolder, sample.Title + ".grably");
+                if (sample.Editable)
+                {
+                    File.WriteAllBytes(project, []);
+                }
+
+                var item = library.RecordSave(file, project, image)
+                    ?? throw new InvalidOperationException("The sample library could not be written.");
+                library.Repository.Update(item with
+                {
+                    ProjectPath = sample.Editable ? project : null,
+                    SourceApp = sample.App,
+                    CreatedUtc = DateTime.UtcNow.AddHours(-sample.HoursAgo),
+                });
+                if (sample.Missing)
+                {
+                    File.Delete(file);
+                }
+            }
+        }
+
+        var viewModel = ActivatorUtilities.CreateInstance<LibraryViewModel>(services, library);
+        return ActivatorUtilities.CreateInstance<LibraryWindow>(services, viewModel);
+    }
+
+    /// <summary>The Settings window; with <paramref name="conflict"/>, as it looks when PrintScreen is taken.</summary>
+    private static SettingsWindow SampleSettings(IServiceProvider services, bool conflict)
+    {
+        var window = services.GetRequiredService<SettingsWindow>();
+        if (conflict)
+        {
+            var viewModel = (SettingsViewModel)window.DataContext;
+            viewModel.Hotkeys.First(h => h.Action == HotkeyAction.CaptureRegion).IsTaken = true;
+            viewModel.ShowPrintScreenHint = true;
+            viewModel.ErrorMessage = "Some keys are already used by another app or by Windows. Pick other keys for them.";
+        }
+
         return window;
     }
 

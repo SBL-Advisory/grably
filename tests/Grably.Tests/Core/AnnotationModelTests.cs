@@ -184,6 +184,13 @@ public class AnnotationModelTests
             Assert.Equal(AnnotationJson.Serialize(doc), AnnotationJson.Serialize(loaded));
             Assert.Equal(info, loadedInfo);
             Assert.False(File.Exists(path + ".tmp"));
+
+            var renamed = info with { ImagePath = @"C:\Pictures\Grably\renamed.png" };
+            ProjectFile.SaveInfo(path, renamed);
+            var (bytesAfter, docAfter, infoAfter) = ProjectFile.Load(path);
+            Assert.Equal(renamed, infoAfter);
+            Assert.Equal(png.ToArray(), bytesAfter);
+            Assert.Equal(AnnotationJson.Serialize(doc), AnnotationJson.Serialize(docAfter));
         }
         finally
         {

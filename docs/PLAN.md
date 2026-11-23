@@ -9,8 +9,8 @@ Each milestone is one GitHub issue and one stacked PR (each branch starts from t
 - [x] M0 Logo and brand assets - issue #1, PR #2
 - [x] M1 Scaffold - issue #3, PR #4
 - [x] M2 Screenshot capture - issue #5, PR #6
-- [x] M3 Annotation editor - issue #7
-- [ ] M4 Library and Settings UI
+- [x] M3 Annotation editor - issue #7, PR #8
+- [x] M4 Library and Settings UI - issue #9
 - [ ] M5 OCR and scrolling capture
 - [ ] M6 Recording engine, video only
 - [ ] M7 Audio and recording UX
@@ -46,6 +46,13 @@ Decisions made while building, which take precedence over the plan text below:
   - Save only overwrites captures, Save as results, and project image paths inside a screenshots folder or recorded by Grably's own projects.
   - An opened image file is never overwritten: its first save is a Save as.
 - **End-to-end scripts** live in `tests/E2E` (scratch copies get wiped between sessions). Run them after changes to capture or the editor.
+- **Library** (`Grably.Core/Library/LibraryRepository`): SQLite with WAL and `PRAGMA user_version` migrations; a newer schema than the app knows is refused rather than guessed at. Search is an FTS5 external-content table over title, app, window title and OCR text, kept in step by triggers; each search word is a prefix match. File paths are unique (case-insensitive). An item has a file, a project, or both: annotations kept at sign-out for an image Grably may not overwrite become a project-only item.
+- **`LibraryService`** keeps the library in step with captures, editor saves and kept projects, and owns the 360x240 JPEG thumbnails. Library failures are logged and never fail a capture or a save; opening the database is retried on the next use, and a damaged database (found on opening by `PRAGMA quick_check`, or by a query error) is moved to `library.db.broken-*`. A new library, on first run or after that, is filled from disk (`LibraryScanner`): every project (which records its image) and every image in the screenshots folders, so no annotations become unreachable. It only ever deletes thumbnails inside its own folder.
+- **Library actions:** Delete sends the image to the Recycle Bin, then its project once the image is gone; for a file that cannot be recycled (network share, removable drive) Windows asks before destroying it, and an item whose image is kept keeps its project and stays in the library. An item open in an editor cannot be renamed or deleted. Rename also updates the project's image path and is undone if the library cannot be updated. The grid checks files in the background (network folders can be slow), keeps the selection across refreshes and shows up to 20,000 items.
+- **After a capture** the options are: open the editor (default), a corner preview (`CapturePreviewWindow`: edit, copy, show in folder, drag the file out; it hides after 7 s unless the pointer is on it), or only copy and save.
+- **Settings** edit a copy (`AppSettings.Clone`) until Save, which writes only the sections the window shows (`WithWindowSectionsFrom`) so changes made elsewhere meanwhile, such as editor tool styles, survive. While a shortcut box is listening Grably's own hotkeys are released (`HotkeyController.Suspend`), so pressing PrintScreen there records it instead of capturing; after recording the box stops listening. A shortcut needs Win, or two of Ctrl, Alt and Shift (one being Ctrl or Alt), unless its key is PrintScreen, Pause, Scroll Lock or F13-F24 (`HotkeyGesture.IsSafeAsGlobalHotkey`), so it can never take a letter, Ctrl+C or Alt+F4 from other apps. Save reports duplicate shortcuts and shortcuts another app owns; a taken PrintScreen shows a hint with a button to Windows' keyboard settings. Recording settings arrive with recording (M7).
+- **Start with Windows** is the HKCU Run value `Grably` (`"<exe>" --background`). Settings only writes it when the choice changes, so saving settings from a development build never repoints an installed Grably's entry.
+- **UI snapshots** for the Library, Settings and the empty Library use throwaway sample data in a temporary folder, never the user's library: `--ui-snapshot Library|LibraryEmpty|Settings|SettingsConflict`.
 
 ## The plan
 

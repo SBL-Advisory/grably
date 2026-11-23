@@ -10,7 +10,7 @@ dotnet test --solution Grably.slnx --filter-not-trait "Category=Desktop"        
 dotnet test --solution Grably.slnx --filter-trait "Category=Desktop"               # tests that need the real desktop
 src/Grably.App/bin/Debug/net10.0-windows10.0.26100.0/Grably.exe                    # run the app (starts in the tray)
 Grably.exe --background                                                            # start without opening the Library
-Grably.exe --ui-snapshot Library --out library.png [--theme light|dark]            # Debug builds: render a window to PNG
+Grably.exe --ui-snapshot Library --out library.png [--theme light|dark]            # Debug builds: render a window to PNG (also LibraryEmpty, Settings, SettingsConflict, Editor, Overlay*)
 tools/Grably.DevCli/bin/Debug/net10.0-windows10.0.26100.0/grably-dev.exe help      # dev harness commands
 powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/capture.ps1     # end-to-end checks on the real desktop
 powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/editor.ps1      #   (see tests/E2E/README.md)

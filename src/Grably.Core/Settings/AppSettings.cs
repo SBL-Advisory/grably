@@ -35,6 +35,34 @@ public sealed class AppSettings
         [HotkeyAction.PauseRecording] = HotkeyGesture.Parse("Ctrl+Alt+P"),
     };
 
+    /// <summary>
+    /// A copy of these settings with the sections the settings window edits (general, hotkeys, screenshots) taken
+    /// from <paramref name="edited"/>. Everything else, such as the editor's remembered tool styles, stays as it is
+    /// now, so saving the window never undoes changes made elsewhere while it was open.
+    /// </summary>
+    public AppSettings WithWindowSectionsFrom(AppSettings edited)
+    {
+        var result = Clone();
+        var source = edited.Clone();
+        result.General = source.General;
+        result.Hotkeys = source.Hotkeys;
+        result.Screenshot = source.Screenshot;
+        return result;
+    }
+
+    /// <summary>A key combination given to more than one action, or null when every hotkey is unique.</summary>
+    public HotkeyGesture? FindDuplicateHotkey() =>
+        Hotkeys.Values.Where(g => !g.IsNone).GroupBy(g => g).FirstOrDefault(g => g.Count() > 1)?.Key;
+
+    /// <summary>A deep copy, for editing in the settings window without touching the live settings until Save.</summary>
+    public AppSettings Clone()
+    {
+        var copy = System.Text.Json.JsonSerializer.Deserialize<AppSettings>(
+            System.Text.Json.JsonSerializer.Serialize(this, SettingsStore.JsonOptions), SettingsStore.JsonOptions)!;
+        copy.Normalize();
+        return copy;
+    }
+
     /// <summary>Fills anything missing or null after loading an older or hand-edited file.</summary>
     public void Normalize()
     {
