@@ -90,3 +90,28 @@ GetAsyncKeyState
 // Recording: 1 ms timer resolution while the frame clock runs
 timeBeginPeriod
 timeEndPeriod
+
+// Cursor effects while recording: Raw Input (asynchronous, never delays the user's input; events are only drawn
+// into frames, never logged), and what the keyboard layout types for a key
+RegisterRawInputDevices
+GetRawInputData
+RAWINPUT
+RAWINPUTDEVICE
+RAWINPUTHEADER
+RAWINPUTDEVICE_FLAGS
+RAW_INPUT_DATA_COMMAND_FLAGS
+WM_INPUT
+RID_DEVICE_INFO_TYPE
+RegisterClassEx
+UnregisterClass
+CreateWindowEx
+DefWindowProc
+DestroyWindow
+GetModuleHandle
+WM_KEYDOWN
+WM_SYSKEYDOWN
+ToUnicodeEx
+GetKeyboardLayout
+GetKeyState
+TranslateMessage
+DispatchMessage

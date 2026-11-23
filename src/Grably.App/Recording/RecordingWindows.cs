@@ -110,7 +110,7 @@ internal sealed class RegionFrameWindow : Window
 }
 
 /// <summary>What the user chose in the pre-record bar.</summary>
-internal sealed record PreRecordChoice(bool SystemAudio, bool Microphone, int FrameRate);
+internal sealed record PreRecordChoice(bool SystemAudio, bool Microphone, int FrameRate, bool Effects = false, bool Camera = false);
 
 /// <summary>The bar shown before recording starts: sound sources (with a live microphone level), frame rate, Record.</summary>
 internal sealed class PreRecordWindow
@@ -119,6 +119,8 @@ internal sealed class PreRecordWindow
     private readonly TaskCompletionSource<PreRecordChoice?> _result = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly ToggleSwitch _system;
     private readonly ToggleSwitch _microphone;
+    private readonly ToggleSwitch _effects;
+    private readonly ToggleSwitch _camera;
     private readonly ProgressBar _level = new() { Width = 56, Height = 4, Maximum = 1, Margin = new Thickness(6, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
     private readonly ComboBox _fps = new() { Margin = new Thickness(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
     private readonly string? _microphoneId;
@@ -130,6 +132,8 @@ internal sealed class PreRecordWindow
         _window = RecordingChrome.Panel("Grably: ready to record");
         _system = new ToggleSwitch { Content = "PC sound", IsChecked = defaults.SystemAudio, Margin = new Thickness(0, 0, 16, 0) };
         _microphone = new ToggleSwitch { Content = "Microphone", IsChecked = defaults.Microphone };
+        _effects = new ToggleSwitch { Content = "Effects", IsChecked = defaults.Effects, Margin = new Thickness(0, 0, 16, 0), ToolTip = "Pointer highlight, clicks and keys (choose which in Settings)" };
+        _camera = new ToggleSwitch { Content = "Camera", IsChecked = defaults.Camera, Margin = new Thickness(0, 0, 16, 0) };
         foreach (var rate in new[] { 15, 30, 60 })
         {
             _fps.Items.Add(new ComboBoxItem { Content = $"{rate} fps", Tag = rate, IsSelected = rate == defaults.FrameRate });
@@ -142,7 +146,7 @@ internal sealed class PreRecordWindow
         cancel.Click += (_, _) => Finish(false);
 
         var row = new StackPanel { Orientation = Orientation.Horizontal };
-        foreach (var element in new UIElement[] { _system, _microphone, _level, _fps, record, cancel })
+        foreach (var element in new UIElement[] { _system, _microphone, _level, _effects, _camera, _fps, record, cancel })
         {
             row.Children.Add(element);
         }
@@ -151,6 +155,8 @@ internal sealed class PreRecordWindow
         RecordingChrome.Prepare(_window, (w, h) => RecordingChrome.Beside(area, workArea, w, h));
         _microphone.Checked += (_, _) => StartMeter();
         _microphone.Unchecked += (_, _) => StopMeter();
+        _camera.Checked += (_, _) => CameraChanged?.Invoke(this, true);
+        _camera.Unchecked += (_, _) => CameraChanged?.Invoke(this, false);
         _window.KeyDown += (_, e) =>
         {
             if (e.Key is Key.Enter or Key.Escape)
@@ -165,6 +171,9 @@ internal sealed class PreRecordWindow
             _result.TrySetResult(null);
         };
     }
+
+    /// <summary>The Camera switch changed: the camera opens now, so its bubble can be placed before recording.</summary>
+    public event EventHandler<bool>? CameraChanged;
 
     /// <summary>The window itself (UI snapshots).</summary>
     internal Window Window => _window;
@@ -198,7 +207,9 @@ internal sealed class PreRecordWindow
         var choice = new PreRecordChoice(
             _system.IsChecked == true,
             _microphone.IsChecked == true,
-            (_fps.SelectedItem as ComboBoxItem)?.Tag as int? ?? 30);
+            (_fps.SelectedItem as ComboBoxItem)?.Tag as int? ?? 30,
+            _effects.IsChecked == true,
+            _camera.IsChecked == true);
         _result.TrySetResult(record ? choice : null);
         _window.Close();
     }

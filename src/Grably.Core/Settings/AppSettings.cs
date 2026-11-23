@@ -197,6 +197,9 @@ public sealed class RecordingSettings
 
     public bool ShowCountdown { get; set; } = true;
 
+    /// <summary>The pre-record bar's Effects switch: draw the highlight, clicks and keys chosen below.</summary>
+    public bool ShowEffects { get; set; } = true;
+
     public bool HighlightCursor { get; set; } = true;
 
     public bool ShowClicks { get; set; } = true;

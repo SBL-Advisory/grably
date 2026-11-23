@@ -323,6 +323,97 @@ internal static class RecordingCommands
         return Check(magenta == 0, $"{what}: excluded ({magenta} magenta samples)");
     }
 
+    /// <summary>
+    /// effects-test: records the 1280x720 test pattern with a scripted pointer (highlight), a click (ring), a shortcut
+    /// (caption) and a generated camera picture in a circle, then checks each one in frames taken from the video.
+    /// Nothing touches the real mouse, keyboard or camera.
+    /// </summary>
+    public static int EffectsTest(string[] args)
+    {
+        var paths = AppPaths.FromEnvironment();
+        var cursor = new PixelPoint(1000, 650); // over the dark strip, away from the moving square
+        var webcam = new PixelRect(1040, 60, 200, 200); // over the blue and black bars
+        ScriptedInput[] script =
+        [
+            new(TimeSpan.FromSeconds(0.2), cursor),
+            new(TimeSpan.FromSeconds(1.0), cursor, Click: Core.Recording.MouseButtonKind.Left),
+            new(TimeSpan.FromSeconds(2.0), cursor, Key: 0x53, Modifiers: Core.Hotkeys.HotkeyModifiers.Control | Core.Hotkeys.HotkeyModifiers.Shift),
+        ];
+        var ffmpeg = FfmpegLocator.Find();
+        var logger = new ConsoleLogger();
+        var recorder = ScreenRecorder.StartAsync(
+            new RecorderOptions
+            {
+                PatternSize = (1280, 720),
+                Ffmpeg = ffmpeg,
+                SessionsFolder = paths.SessionsFolder,
+                HighlightCursor = true,
+                ShowClicks = true,
+                Keystrokes = Core.Settings.KeystrokeMode.ShortcutsOnly,
+                Webcam = new SyntheticWebcam(),
+                WebcamScreenRect = () => webcam,
+                TestInput = script,
+            },
+            new EncoderProbe(ffmpeg, logger),
+            logger).GetAwaiter().GetResult();
+        Thread.Sleep(TimeSpan.FromSeconds(3) - recorder.Elapsed);
+        var result = recorder.StopAsync().GetAwaiter().GetResult();
+        if (!result.Succeeded)
+        {
+            Console.WriteLine($"FAIL recording: {result.Error}");
+            return 1;
+        }
+
+        var output = Path.Combine(paths.DefaultVideosFolder, $"grably-effects-{DateTime.Now:yyyyMMdd-HHmmss}.mp4");
+        ScreenRecorder.SaveAsMp4Async(ffmpeg, result.Session, result.SessionFolder, output).GetAwaiter().GetResult();
+        Directory.Delete(result.SessionFolder, recursive: true);
+
+        var failures = 0;
+        var highlight = ExtractFrame(ffmpeg, output, 0.8);
+        var lit = highlight.GetRgb(cursor.X + 24, cursor.Y); // on the ring around the pointer
+        var plain = highlight.GetRgb(cursor.X + 80, cursor.Y);
+        var centre = highlight.GetRgb(cursor.X, cursor.Y);
+        failures += Check(Luma(lit) > Luma(plain) + 25 && ((lit >> 16) & 0xFF) > (lit & 0xFF) + 20,
+            $"pointer highlight: #{lit:X6} on the ring, #{plain:X6} beside it");
+        failures += Check(Math.Abs(Luma(centre) - Luma(plain)) < 20, $"the pointer itself is not tinted (#{centre:X6} in the middle)");
+
+        var ring = ExtractFrame(ffmpeg, output, 1.2); // 0.2 s after the click: the ring is about 21 px out
+        var onRing = Enumerable.Range(0, 8)
+            .Select(i => ring.GetRgb(cursor.X + (int)(21 * Math.Cos(i * Math.PI / 4)), cursor.Y + (int)(21 * Math.Sin(i * Math.PI / 4))))
+            .Count(rgb => (rgb & 0xFF) > ((rgb >> 16) & 0xFF) + 25 && ((rgb >> 8) & 0xFF) > ((rgb >> 16) & 0xFF) + 25);
+        failures += Check(onRing >= 4, $"click ring: {onRing} of 8 points on the circle are teal");
+
+        var inside = ring.GetRgb(webcam.X + (webcam.Width / 2), webcam.Y + (webcam.Height / 2));
+        var corner = ring.GetRgb(webcam.X + 6, webcam.Y + 6);
+        failures += Check(Luma(inside) > 70, $"camera picture in the circle (#{inside:X6} at its centre, over a black bar)");
+        failures += Check((corner & 0xFF) > 180 && ((corner >> 16) & 0xFF) < 70, $"outside the circle the bar shows through (#{corner:X6})");
+
+        var caption = ExtractFrame(ffmpeg, output, 2.3);
+        var bright = 0;
+        for (var y = 600; y < 690; y++)
+        {
+            for (var x = 540; x < 740; x++)
+            {
+                bright += Luma(caption.GetRgb(x, y)) > 200 ? 1 : 0;
+            }
+        }
+
+        failures += Check(bright > 150, $"keystroke caption: {bright} bright text pixels in the pill at the bottom");
+        if (args.Contains("--keep"))
+        {
+            Console.WriteLine($"INFO kept {output}");
+        }
+        else
+        {
+            File.Delete(output);
+        }
+
+        Console.WriteLine(failures == 0 ? "PASS effects-test: highlight, click ring, caption and camera are in the video" : $"FAIL effects-test: {failures} check(s) failed");
+        return failures == 0 ? 0 : 1;
+    }
+
+    private static int Luma(int rgb) => ((((rgb >> 16) & 0xFF) * 3) + (((rgb >> 8) & 0xFF) * 6) + (rgb & 0xFF)) / 10;
+
     private static (RecordingResult Result, string Ffmpeg) RecordFor(
         string[] args, double seconds, int fps, AppPaths paths, IReadOnlyList<TimeSpan>? signals = null, TimeSpan? pauseAt = null)
     {

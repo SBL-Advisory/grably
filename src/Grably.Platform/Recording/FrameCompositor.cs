@@ -24,6 +24,7 @@ internal sealed class FrameCompositor : IDisposable
     private readonly ID2D1Bitmap1 _target;
     private readonly ID3D11Texture2D _staging;
     private readonly Nv12Converter? _nv12;
+    private readonly OverlayRenderer _overlay;
     private ID3D11Texture2D? _sourceTexture;
     private ID2D1Bitmap1? _sourceBitmap;
 
@@ -36,6 +37,7 @@ internal sealed class FrameCompositor : IDisposable
             Format.B8G8R8A8_UNorm, (uint)width, (uint)height, 1, 1, BindFlags.RenderTarget | BindFlags.ShaderResource,
             ResourceUsage.Default, CpuAccessFlags.None, 1, 0, ResourceOptionFlags.None));
         _d2d = gpu.D2DDevice.CreateDeviceContext(DeviceContextOptions.None);
+        _overlay = new OverlayRenderer(gpu.D2DFactory);
         using (var surface = _output.QueryInterface<IDXGISurface>())
         {
             _target = _d2d.CreateBitmapFromDxgiSurface(surface, new BitmapProperties1(
@@ -74,7 +76,9 @@ internal sealed class FrameCompositor : IDisposable
 
     /// <summary>Draws <paramref name="source"/> (or black before the first frame) into the output frame.</summary>
     /// <param name="crop">The part of the source to show, in its pixels; null shows all of it.</param>
-    public void Draw(ID3D11Texture2D? source, PixelRect? crop)
+    /// <param name="contentOrigin">Where the captured content's top-left pixel is on screen (to place the overlay).</param>
+    /// <param name="overlay">Cursor effects, caption and webcam to draw over the picture, in screen pixels.</param>
+    public void Draw(ID3D11Texture2D? source, PixelRect? crop, PixelPoint contentOrigin = default, OverlayState? overlay = null)
     {
         _d2d.BeginDraw();
         _d2d.Clear(new Color4(0, 0, 0, 1));
@@ -114,6 +118,19 @@ internal sealed class FrameCompositor : IDisposable
                     scale == 1 ? InterpolationMode.NearestNeighbor : InterpolationMode.HighQualityCubic,
                     new Rect(shown.X, shown.Y, shown.Width, shown.Height),
                     null);
+                if (overlay is not null)
+                {
+                    // Screen pixel -> content pixel -> frame position.
+                    var origin = new System.Numerics.Vector2((float)x, (float)y);
+                    _overlay.Draw(
+                        _d2d,
+                        overlay,
+                        p => origin + new System.Numerics.Vector2(
+                            (float)((p.X - contentOrigin.X - shown.X) * scale), (float)((p.Y - contentOrigin.Y - shown.Y) * scale)),
+                        (float)scale,
+                        Width,
+                        Height);
+                }
             }
         }
 
@@ -122,7 +139,8 @@ internal sealed class FrameCompositor : IDisposable
 
     /// <summary>Colour bars, with a white square that moves one step per frame so frames can be told apart.</summary>
     /// <param name="flash">The whole frame white instead (the sync test's visual signal).</param>
-    public void DrawTestPattern(long frame, bool flash = false)
+    /// <param name="overlay">Drawn over the pattern; its screen pixels are the frame's own (for the effects test).</param>
+    public void DrawTestPattern(long frame, bool flash = false, OverlayState? overlay = null)
     {
         _d2d.BeginDraw();
         if (flash)
@@ -148,6 +166,11 @@ internal sealed class FrameCompositor : IDisposable
         {
             var size = Height * 0.1f;
             _d2d.FillRectangle(new Rect(frame * 4 % Math.Max(1, (int)(Width - size)), Height * 0.85f, size, size), white);
+        }
+
+        if (overlay is not null)
+        {
+            _overlay.Draw(_d2d, overlay, p => new System.Numerics.Vector2(p.X, p.Y), 1, Width, Height);
         }
 
         _d2d.EndDraw();
@@ -183,6 +206,7 @@ internal sealed class FrameCompositor : IDisposable
 
     public void Dispose()
     {
+        _overlay.Dispose();
         _sourceBitmap?.Dispose();
         _target.Dispose();
         _d2d.Dispose();

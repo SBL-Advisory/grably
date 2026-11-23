@@ -168,6 +168,31 @@
                 <ui:CardControl Header="Count down 3, 2, 1 before recording" Icon="{ui:SymbolIcon Timer24}">
                     <ui:ToggleSwitch IsChecked="{Binding Draft.Recording.ShowCountdown}" />
                 </ui:CardControl>
+                <ui:CardControl Header="Highlight the pointer" Icon="{ui:SymbolIcon CursorHover24}">
+                    <ui:ToggleSwitch IsChecked="{Binding Draft.Recording.HighlightCursor}" />
+                </ui:CardControl>
+                <ui:CardControl Header="Show clicks" Icon="{ui:SymbolIcon CursorClick24}">
+                    <ui:ToggleSwitch IsChecked="{Binding Draft.Recording.ShowClicks}" />
+                </ui:CardControl>
+                <ui:CardControl Icon="{ui:SymbolIcon Keyboard24}">
+                    <ui:CardControl.Header>
+                        <StackPanel>
+                            <TextBlock Text="Show keys pressed" />
+                            <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
+                                       Text="Keys are only drawn into the video, never saved. Shortcuts only keeps passwords and messages out of it." />
+                        </StackPanel>
+                    </ui:CardControl.Header>
+                    <ComboBox Style="{StaticResource Choice}" ItemsSource="{Binding KeystrokeModes}" SelectedValue="{Binding Draft.Recording.Keystrokes}" />
+                </ui:CardControl>
+                <ui:CardControl Header="Camera" Icon="{ui:SymbolIcon Camera24}">
+                    <ComboBox Style="{StaticResource Choice}" ItemsSource="{Binding Cameras}" SelectedValue="{Binding Draft.Recording.WebcamDeviceId}" />
+                </ui:CardControl>
+                <ui:CardControl Header="Camera shape and size" Icon="{ui:SymbolIcon PersonCircle24}">
+                    <StackPanel Orientation="Horizontal">
+                        <ComboBox Margin="0,0,8,0" MinWidth="150" DisplayMemberPath="Label" SelectedValuePath="Value" ItemsSource="{Binding WebcamShapes}" SelectedValue="{Binding Draft.Recording.WebcamShape}" />
+                        <ComboBox MinWidth="110" DisplayMemberPath="Label" SelectedValuePath="Value" ItemsSource="{Binding WebcamSizes}" SelectedValue="{Binding Draft.Recording.WebcamSize}" />
+                    </StackPanel>
+                </ui:CardControl>
 
                 <!-- Library -->
                 <TextBlock Style="{StaticResource Section}" Text="Library" />

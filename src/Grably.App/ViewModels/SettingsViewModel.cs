@@ -62,6 +62,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         ScreenshotsFolder = Draft.General.ScreenshotsFolder ?? paths.DefaultScreenshotsFolder;
         VideosFolder = Draft.General.VideosFolder ?? paths.DefaultVideosFolder;
         _shown = Draft.Clone();
+        _ = LoadCamerasAsync();
         if (Delays.All(d => d.Value != Draft.Screenshot.DelaySeconds))
         {
             Delays = [.. Delays, new(Draft.Screenshot.DelaySeconds, $"{Draft.Screenshot.DelaySeconds} seconds")];
@@ -95,6 +96,20 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>"Windows default" (followed when it changes) and the connected microphones.</summary>
     public IReadOnlyList<Option<string?>> Microphones { get; } =
         [new(null, "Windows default"), .. Grably.Platform.Recording.AudioDevices.Microphones().Select(d => new Option<string?>(d.Id, d.Name))];
+
+    public IReadOnlyList<Option<KeystrokeMode>> KeystrokeModes { get; } =
+    [
+        new(KeystrokeMode.Off, "Don't show keys"),
+        new(KeystrokeMode.ShortcutsOnly, "Shortcuts only (never typed text)"),
+        new(KeystrokeMode.AllKeys, "All keys, including typing"),
+    ];
+
+    public IReadOnlyList<Option<WebcamShape>> WebcamShapes { get; } = [new(WebcamShape.Circle, "Circle"), new(WebcamShape.RoundedRectangle, "Rounded rectangle")];
+
+    public IReadOnlyList<Option<WebcamSize>> WebcamSizes { get; } = [new(WebcamSize.Small, "Small"), new(WebcamSize.Medium, "Medium"), new(WebcamSize.Large, "Large")];
+
+    /// <summary>"Windows default" and the cameras found (filled in once the list arrives; the camera is not turned on).</summary>
+    public System.Collections.ObjectModel.ObservableCollection<Option<string?>> Cameras { get; } = [new(null, "Windows default")];
 
     public IReadOnlyList<Option<int>> Delays { get; private set; } =
         [new(0, "No delay"), new(3, "3 seconds"), new(5, "5 seconds"), new(10, "10 seconds")];
@@ -189,6 +204,23 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
 
         return true;
+    }
+
+    private async Task LoadCamerasAsync()
+    {
+        try
+        {
+            foreach (var camera in await Grably.Platform.Recording.WebcamSource.ListAsync())
+            {
+                Cameras.Add(new Option<string?>(camera.Id, camera.Name));
+            }
+
+            OnPropertyChanged(nameof(Draft)); // re-select the saved camera now that it is in the list
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _logger.LogDebug(ex, "Listing cameras failed");
+        }
     }
 
     public void SuspendHotkeys() => _hotkeys.Suspend();

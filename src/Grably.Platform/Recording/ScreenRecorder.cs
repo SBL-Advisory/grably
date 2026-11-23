@@ -1,5 +1,8 @@
 using System.Diagnostics;
 using Grably.Core.Geometry;
+using Grably.Core.Hotkeys;
+using Grably.Platform.Display;
+using Grably.Platform.Input;
 using Grably.Core.Recording;
 using Grably.Core.Settings;
 using Microsoft.Extensions.Logging;
@@ -43,11 +46,32 @@ public sealed record RecorderOptions
     /// </summary>
     public IReadOnlyList<TimeSpan>? TestSignals { get; init; }
 
+    /// <summary>A soft disc under the pointer.</summary>
+    public bool HighlightCursor { get; init; }
+
+    /// <summary>A ring for every click.</summary>
+    public bool ShowClicks { get; init; }
+
+    public KeystrokeMode Keystrokes { get; init; } = KeystrokeMode.Off;
+
+    /// <summary>A camera to draw into the video, where <see cref="WebcamScreenRect"/> says (the on-screen bubble's place).</summary>
+    public IWebcamFrames? Webcam { get; init; }
+
+    public Func<PixelRect?>? WebcamScreenRect { get; init; }
+
+    public WebcamShape WebcamShape { get; init; } = WebcamShape.Circle;
+
+    /// <summary>Test pattern only: pointer moves, clicks and keys at recording times, for the effects test.</summary>
+    public IReadOnlyList<ScriptedInput>? TestInput { get; init; }
+
     public required string Ffmpeg { get; init; }
 
     /// <summary>Where the session folder (session.json and the Matroska intermediate) is created.</summary>
     public required string SessionsFolder { get; init; }
 }
+
+/// <summary>A pointer position, and optionally a click or a key, at a recording time (the effects test's input).</summary>
+public sealed record ScriptedInput(TimeSpan At, PixelPoint Position, MouseButtonKind? Click = null, int? Key = null, HotkeyModifiers Modifiers = HotkeyModifiers.None);
 
 /// <param name="Composed">Frames actually drawn and read back.</param>
 /// <param name="Repeats">Frames written again because the next one was late (the compositor fell behind the clock).</param>
@@ -91,6 +115,11 @@ public sealed class ScreenRecorder : IAsyncDisposable
     private int _extraForWriting;
     private volatile bool _stopping;
     private Timer? _silence;
+    private EffectTimeline? _effects;
+    private InputMonitor? _input;
+    private volatile System.Runtime.CompilerServices.StrongBox<PixelRect> _lastArea = new(default); // swapped whole between threads
+    private int _scripted;
+    private PixelPoint? _scriptedCursor;
     private int _disposed;
     private int _failedRaised;
     private bool _composeDone;
@@ -245,6 +274,7 @@ public sealed class ScreenRecorder : IAsyncDisposable
 
                 var recorder = new ScreenRecorder(options, logger, gpu, source, compositor, ffmpeg, session, folder, clock, audio) { Warnings = warnings };
                 relay.Target = recorder;
+                recorder.StartEffects(warnings);
                 recorder._clock.Start(); // audio is already running, so it is ready at zero
                 recorder._silence = new Timer(_ => recorder.PadSilence(), null, 500, 500);
                 recorder._composeThread.Start();
@@ -281,6 +311,7 @@ public sealed class ScreenRecorder : IAsyncDisposable
         }
 
         _silence?.Dispose();
+        _input?.Dispose();
         StopAudio(_audio, _pacer.Duration);
 
         if (!await _ffmpeg.WaitAsync(TimeSpan.FromSeconds(60)))
@@ -321,6 +352,7 @@ public sealed class ScreenRecorder : IAsyncDisposable
 
         await JoinWorkersAsync(TimeSpan.FromSeconds(5));
         _silence?.Dispose();
+        _input?.Dispose();
         StopAudio(_audio);
         _ffmpeg.Dispose();
         _source?.Dispose(); // before the device: a late capture callback must find the source closed
@@ -437,6 +469,15 @@ public sealed class ScreenRecorder : IAsyncDisposable
                 if (buffer is not null)
                 {
                     var started = Stopwatch.GetTimestamp();
+                    var overlay = Overlay(_pacer.NextDue); // outside the GPU lock: it reads the screen and the camera
+                    var origin = default(PixelPoint);
+                    if (overlay is not null && _options.Target is { } target)
+                    {
+                        var area = target.CurrentArea();
+                        _lastArea = new(area);
+                        origin = target.Crop is { } crop ? new PixelPoint(area.X - crop.X, area.Y - crop.Y) : new PixelPoint(area.X, area.Y);
+                    }
+
                     lock (_gpu.Lock)
                     {
                         if (_source is null)
@@ -444,11 +485,12 @@ public sealed class ScreenRecorder : IAsyncDisposable
                             var at = _pacer.NextDue;
                             _compositor.DrawTestPattern(
                                 _pacer.Frames,
-                                _options.TestSignals?.Any(s => at >= s && at < s + TimeSpan.FromMilliseconds(100)) == true);
+                                _options.TestSignals?.Any(s => at >= s && at < s + TimeSpan.FromMilliseconds(100)) == true,
+                                overlay);
                         }
                         else
                         {
-                            _compositor.Draw(_source.Latest, _options.Target!.Crop);
+                            _compositor.Draw(_source.Latest, _options.Target!.Crop, origin, overlay);
                         }
 
                         _compositor.ReadInto(buffer);
@@ -554,6 +596,97 @@ public sealed class ScreenRecorder : IAsyncDisposable
     }
 
     /// <summary>Opens the audio tracks asked for. One that cannot start is left out with a warning.</summary>
+    /// <summary>
+    /// Sets up the cursor effects: the timeline, and the input hooks when clicks or keys are shown (only for screen
+    /// recordings). Hooks that cannot be installed become a warning.
+    /// </summary>
+    private void StartEffects(List<string> warnings)
+    {
+        var o = _options;
+        if (!o.HighlightCursor && !o.ShowClicks && o.Keystrokes == KeystrokeMode.Off && o.TestInput is null)
+        {
+            return;
+        }
+
+        _effects = new EffectTimeline(o.Keystrokes);
+        if (o.Target is null || (!o.ShowClicks && o.Keystrokes == KeystrokeMode.Off))
+        {
+            return;
+        }
+
+        try
+        {
+            _lastArea = new(o.Target.ScreenArea);
+            _input = new InputMonitor(mouse: o.ShowClicks, keyboard: o.Keystrokes != KeystrokeMode.Off);
+            _input.ButtonDown += (position, button) =>
+            {
+                // Only clicks on what is being recorded.
+                if (_lastArea.Value.Contains(position) && _clock.At(_clock.Now()) is { } at)
+                {
+                    _effects.AddClick(position, button, at);
+                }
+            };
+            _input.KeyDown += (key, modifiers, layout) =>
+            {
+                // Only keys typed into what is being recorded, not into another app on another screen.
+                if (KeysGoToRecording() && _clock.At(_clock.Now()) is { } at)
+                {
+                    _effects.AddKey(key, modifiers, at, layout); // drawn into frames only; never logged
+                }
+            };
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _logger.LogWarning(ex, "Input for cursor effects could not be watched");
+            warnings.Add("Clicks and keys cannot be shown in this recording.");
+        }
+    }
+
+    /// <summary>The window in front is the recorded window, or overlaps the recorded area.</summary>
+    private bool KeysGoToRecording()
+    {
+        var foreground = WindowActions.Foreground();
+        return foreground == _options.Target!.Handle
+            || (WindowActions.FrameBounds(foreground) is { } bounds && !bounds.Intersect(_lastArea.Value).IsEmpty);
+    }
+
+    /// <summary>What to draw over the frame at recording time <paramref name="now"/>, or null when nothing.</summary>
+    private OverlayState? Overlay(TimeSpan now)
+    {
+        if (_effects is null && _options.Webcam is null)
+        {
+            return null;
+        }
+
+        if (_options.TestInput is { } script)
+        {
+            for (; _scripted < script.Count && script[_scripted].At <= now; _scripted++)
+            {
+                var input = script[_scripted];
+                _scriptedCursor = input.Position;
+                if (input.Click is { } button)
+                {
+                    _effects?.AddClick(input.Position, button, input.At);
+                }
+
+                if (input.Key is { } key)
+                {
+                    _effects?.AddKey(key, input.Modifiers, input.At);
+                }
+            }
+        }
+
+        return new OverlayState
+        {
+            Cursor = !_options.HighlightCursor ? null : _options.TestInput is not null ? _scriptedCursor : ScreenPointer.Position(),
+            Ripples = _effects?.Ripples(now) ?? [],
+            Caption = _effects?.Caption(now),
+            Webcam = _options.Webcam?.Latest,
+            WebcamRect = _options.WebcamScreenRect?.Invoke(),
+            WebcamShape = _options.WebcamShape,
+        };
+    }
+
     /// <summary>
     /// Keeps quiet tracks filled with silence up to shortly before now (packets can arrive a little late), so sound
     /// returning after a long silence is not preceded by one huge write on the audio thread.

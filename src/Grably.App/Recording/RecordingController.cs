@@ -47,6 +47,9 @@ public sealed class RecordingController(
     private EncoderProbe? _probe;
     private ScreenRecorder? _recorder;
     private PreRecordWindow? _preRecord;
+    private WebcamSource? _camera;
+    private WebcamBubble? _bubble;
+    private Task? _cameraStart;
     private bool _stopping;
     private RecordingControlBar? _bar;
     private RegionFrameWindow? _frame;
@@ -167,7 +170,25 @@ public sealed class RecordingController(
             _frame = new RegionFrameWindow(area);
             _frame.Show();
             _preRecord = new PreRecordWindow(
-                area, monitor.WorkArea, new PreRecordChoice(options.RecordSystemAudio, options.RecordMicrophone, options.FrameRate), options.MicrophoneDeviceId);
+                area, monitor.WorkArea,
+                new PreRecordChoice(options.RecordSystemAudio, options.RecordMicrophone, options.FrameRate, options.ShowEffects, options.WebcamEnabled),
+                options.MicrophoneDeviceId);
+            _preRecord.CameraChanged += (_, on) =>
+            {
+                if (on)
+                {
+                    _cameraStart = StartCameraAsync(area, options);
+                }
+                else
+                {
+                    StopCamera();
+                }
+            };
+            if (options.WebcamEnabled)
+            {
+                _cameraStart = StartCameraAsync(area, options); // opening a camera takes a second or two: start now
+            }
+
             var choice = await _preRecord.ShowAsync();
             _preRecord = null;
             if (choice is null)
@@ -190,6 +211,16 @@ public sealed class RecordingController(
             }
 
             await warmUp;
+            if (choice.Camera && _cameraStart is { } opening)
+            {
+                await opening; // usually done by now
+            }
+            else if (!choice.Camera)
+            {
+                StopCamera();
+            }
+
+            var effects = choice.Effects;
             _started = DateTime.Now;
             _recorder = await ScreenRecorder.StartAsync(
                 new RecorderOptions
@@ -202,6 +233,12 @@ public sealed class RecordingController(
                     SystemAudioDeviceId = options.SystemAudioDeviceId,
                     Microphone = choice.Microphone,
                     MicrophoneDeviceId = options.MicrophoneDeviceId,
+                    HighlightCursor = effects && options.HighlightCursor,
+                    ShowClicks = effects && options.ShowClicks,
+                    Keystrokes = effects ? options.Keystrokes : KeystrokeMode.Off,
+                    Webcam = _camera,
+                    WebcamScreenRect = _bubble is { } bubble ? () => bubble.ScreenRect : null,
+                    WebcamShape = options.WebcamShape,
                     Ffmpeg = ffmpeg,
                     SessionsFolder = paths.SessionsFolder,
                 },
@@ -390,11 +427,51 @@ public sealed class RecordingController(
         return await new CountdownWindow(area).RunAsync(3, cancel.Token);
     }
 
+    /// <summary>Opens the camera and shows its bubble; a camera that cannot be used is reported and left out.</summary>
+    private async Task StartCameraAsync(Core.Geometry.PixelRect area, RecordingSettings options)
+    {
+        if (_camera is not null)
+        {
+            return;
+        }
+
+        try
+        {
+            var camera = await WebcamSource.StartAsync(options.WebcamDeviceId);
+            if (State != RecordingState.Preparing || _camera is not null)
+            {
+                await camera.DisposeAsync(); // cancelled, or switched off and on again, while it was opening
+                return;
+            }
+
+            _camera = camera;
+            _bubble = new WebcamBubble(camera, area, options.WebcamShape, options.WebcamSize);
+            _bubble.Show();
+        }
+        catch (WebcamUnavailableException ex)
+        {
+            logger.LogWarning(ex, "The camera could not be used");
+            notifications.Show(ex.Message);
+        }
+    }
+
+    private void StopCamera()
+    {
+        _bubble?.Close();
+        _bubble = null;
+        if (_camera is { } camera)
+        {
+            _camera = null;
+            _ = camera.DisposeAsync().AsTask(); // its last picture stays readable for the final frames
+        }
+    }
+
     private void Remember(PreRecordChoice choice)
     {
         var current = settings.Current;
         if (current.Recording.RecordSystemAudio == choice.SystemAudio && current.Recording.RecordMicrophone == choice.Microphone
-            && current.Recording.FrameRate == choice.FrameRate)
+            && current.Recording.FrameRate == choice.FrameRate && current.Recording.ShowEffects == choice.Effects
+            && current.Recording.WebcamEnabled == choice.Camera)
         {
             return;
         }
@@ -403,6 +480,8 @@ public sealed class RecordingController(
         changed.Recording.RecordSystemAudio = choice.SystemAudio;
         changed.Recording.RecordMicrophone = choice.Microphone;
         changed.Recording.FrameRate = choice.FrameRate;
+        changed.Recording.ShowEffects = choice.Effects;
+        changed.Recording.WebcamEnabled = choice.Camera;
         try
         {
             settings.Save(changed);
@@ -428,6 +507,7 @@ public sealed class RecordingController(
         _bar?.Close();
         _bar = null;
         CloseFrame();
+        StopCamera();
     }
 
     private void CloseFrame()

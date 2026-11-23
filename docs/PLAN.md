@@ -13,8 +13,8 @@ Each milestone is one GitHub issue and one stacked PR (each branch starts from t
 - [x] M4 Library and Settings UI - issue #9, PR #10
 - [x] M5 OCR and scrolling capture - issue #11, PR #12
 - [x] M6 Recording engine, video only - issue #13, PR #14
-- [x] M7 Audio and recording UX - issue #15
-- [ ] M8 Cursor effects and webcam
+- [x] M7 Audio and recording UX - issue #15, PR #16
+- [x] M8 Cursor effects and webcam - issue #17
 - [ ] M9 Trim editor and export
 - [ ] M10 Packaging, updates, release
 - [ ] M11 Hardening pass
@@ -101,6 +101,24 @@ Decisions made while building, which take precedence over the plan text below:
 - **Audio timestamps:** a packet with no or an absurd timestamp is taken to end now. Quiet tracks are filled with silence as time passes (up to 300 ms behind), never in one huge write when sound returns.
 - **Settings merge** became value by value (`AppSettings.WithChangesFrom`): the Settings window applies only what it changed, so pre-record bar choices made while it was open survive.
 - **Recording visibility:** the screenshot overlay and the corner preview are also excluded from capture, so a screenshot taken mid-recording is not in the video. WPF-UI's styles gave plain windows a minimum size, which made the small panels (scrolling capture, preview, recording bars) far too big; they now set `MinWidth`/`MinHeight` to 0.
+- **Cursor effects:**
+  - `Core/Recording/EffectTimeline` keeps clicks and keys on the recording clock: a ring grows for 550 ms; a caption shows for 1.6 s and fades for the last 0.3 s, and typed letters build a word.
+  - The pointer highlight is a ring, so the pointer keeps its colours.
+- **Keys never leak typed text:** `KeystrokeFormatter` ("shortcuts only") takes what the user's own keyboard layout types for the key (`KeyText`, from `ToUnicodeEx` with flag 4 so dead keys still work). It shows only Ctrl/Alt/Win chords and keys that never type. Anything that types text, anything with AltGr (right Alt, which Windows reports as Ctrl+Alt: AltGr+Q is @ on German keyboards), numpad keys and Alt codes are left out. Found in review: a US-only key list let these through.
+- **Input comes from Raw Input, not hooks** (`Platform/Input/InputMonitor`): a message-only window with `RIDEV_INPUTSINK` on its own thread, used only while a recording with clicks or keys runs.
+  - Raw Input is told after the fact: nothing the user does waits for Grably. Low-level hooks would stall input during a GC pause, and Windows silently removes hooks that time out.
+  - Held modifiers are followed from the input stream itself (left and right separately), since asking the keyboard later is wrong for quick shortcuts.
+  - Keys count only while the window in front overlaps what is recorded, and clicks only inside it.
+  - Keys are never logged.
+- **Overlays** (`Platform/Recording/OverlayRenderer`) are drawn by the compositor in Direct2D, mapped from screen pixels through the capture's crop and scale. A window target's frame is read each frame with one DWM call, outside the GPU lock, so effects follow a moving window. DirectWrite comes with `Vortice.Direct2D1` (there is no separate 3.x package).
+- **Webcam:**
+  - `WebcamSource` uses WinRT `MediaCapture` with a BGRA frame reader, at least 24 fps and up to 1280x720.
+    - Alpha is forced opaque, padded rows are packed, and three buffers are reused in turn.
+    - It falls back to shared access when another app has the camera.
+    - Any failure leaves the camera out with a clear message (privacy permission, in use) and never stops the recording.
+  - The camera opens with the pre-record bar, so the bubble can be placed before recording and does not delay the start.
+  - The same frames feed the on-screen `WebcamBubble` and the compositor. The bubble is a mirrored circle or rounded rectangle in three sizes, draggable and excluded from capture. The compositor draws the picture centre-cropped into a geometry mask where the bubble is.
+- **Testing without the user's devices:** `grably-dev effects-test` records the test pattern with scripted pointer, click and shortcut input and a generated camera picture (`SyntheticWebcam`), then checks each effect in frames from the video. A real camera is a manual check: Grably never turns it on by itself.
 - **Measured on the development machine (Intel QSV, 3440x1440 at 125 %):** 30 fps native with no drops and 9.5 ms per frame; 60 fps native with 1 late frame in 8 s; the BGRA fallback keeps up at 30 fps after 3 start-up drops. Test-pattern colours come back within 2 levels on both paths. Captures have no yellow border: borderless capture is granted to the unpackaged app.
 - **UI snapshots** for the Library, Settings and the empty Library use throwaway sample data in a temporary folder, never the user's library: `--ui-snapshot Library|LibraryEmpty|Settings|SettingsConflict`.
 

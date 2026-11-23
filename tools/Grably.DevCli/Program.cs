@@ -43,6 +43,7 @@ internal static class Program
         ("bench [--monitor N | --pattern] [--seconds S] [--fps F] [--bgra]", "Record without keeping it and report dropped and late frames."),
         ("synctest [--seconds S] [--pause]", "Test pattern with flashes and beeps at the same times: PASS if audio is within 80 ms of video."),
         ("exclusion-test", "Show two magenta squares excluded from capture; PASS if no screenshot or recording contains them."),
+        ("effects-test [--keep]", "Test pattern with a scripted pointer, click, shortcut and a generated camera: PASS if each is in the video."),
     ];
 
     private static int Main(string[] args)
@@ -74,6 +75,7 @@ internal static class Program
                 "bench" => RecordingCommands.Bench(args[1..]),
                 "synctest" => RecordingCommands.SyncTest(args[1..]),
                 "exclusion-test" => RecordingCommands.ExclusionTest(args[1..]),
+                "effects-test" => RecordingCommands.EffectsTest(args[1..]),
                 "project" when args.Length > 1 => DescribeProject(args[1]),
                 "library" => ListLibrary(OptionValue(args, "--search"), OptionValue(args, "--expect-file"), args.Contains("--editable")),
                 "version" => PrintVersion(),

@@ -53,8 +53,8 @@ internal static class UiSnapshot
             {
                 "library" => RenderWindow(SampleLibrary(services, scratch, withItems: true)),
                 "libraryempty" => RenderWindow(SampleLibrary(services, scratch, withItems: false)),
-                "settings" => RenderWindow(SampleSettings(services, conflict: false), height: 2400),
-                "settingsconflict" => RenderWindow(SampleSettings(services, conflict: true), height: 2400),
+                "settings" => RenderWindow(SampleSettings(services, conflict: false), height: 2900),
+                "settingsconflict" => RenderWindow(SampleSettings(services, conflict: true), height: 2900),
                 "prerecord" => RenderWindow(new Recording.PreRecordWindow(OffScreen, OffScreen, new Recording.PreRecordChoice(true, true, 30), null).Window),
                 "recordingbar" => RenderWindow(SampleControlBar()),
                 "overlayhover" => RenderOverlay(OverlayScenario.Hover),

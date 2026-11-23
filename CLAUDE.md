@@ -21,6 +21,7 @@ python tools/brand/build_brand.py                                               
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/fetch-ffmpeg.ps1         # download the pinned LGPL ffmpeg (before building, for recording)
 grably-dev record --pattern --seconds 5 | record --monitor 0 | bench --monitor 1    # recording engine checks (ffprobe, colours, drops)
 grably-dev synctest --seconds 10 --pause | exclusion-test                          # audio/video sync (no sound played); chrome stays out of captures
+grably-dev effects-test [--keep]                                                   # highlight, click ring, caption and camera drawn into a recording
 ```
 
 Set `GRABLY_HOME` to a scratch folder before running the app, DevCli or end-to-end checks so settings, data and logs go there instead of the real profile. Logs: `<data>/logs/grably-YYYYMMDD.log`.
