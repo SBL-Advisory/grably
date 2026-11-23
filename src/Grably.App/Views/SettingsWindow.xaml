@@ -144,6 +144,31 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
+                <!-- Recording -->
+                <TextBlock Style="{StaticResource Section}" Text="Recording" />
+                <ui:CardControl Header="Frame rate" Icon="{ui:SymbolIcon VideoClip24}">
+                    <ComboBox Style="{StaticResource Choice}" ItemsSource="{Binding FrameRates}" SelectedValue="{Binding Draft.Recording.FrameRate}" />
+                </ui:CardControl>
+                <ui:CardControl Header="Quality" Icon="{ui:SymbolIcon Diamond24}">
+                    <ComboBox Style="{StaticResource Choice}" ItemsSource="{Binding Qualities}" SelectedValue="{Binding Draft.Recording.Quality}" />
+                </ui:CardControl>
+                <ui:CardControl Icon="{ui:SymbolIcon ArrowMinimize24}">
+                    <ui:CardControl.Header>
+                        <StackPanel>
+                            <TextBlock Text="Video size" />
+                            <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
+                                       Text="Large screens make large files; a smaller size is easier to share." />
+                        </StackPanel>
+                    </ui:CardControl.Header>
+                    <ComboBox Style="{StaticResource Choice}" ItemsSource="{Binding MaxHeights}" SelectedValue="{Binding Draft.Recording.MaxHeight}" />
+                </ui:CardControl>
+                <ui:CardControl Header="Microphone" Icon="{ui:SymbolIcon Mic24}">
+                    <ComboBox Style="{StaticResource Choice}" ItemsSource="{Binding Microphones}" SelectedValue="{Binding Draft.Recording.MicrophoneDeviceId}" />
+                </ui:CardControl>
+                <ui:CardControl Header="Count down 3, 2, 1 before recording" Icon="{ui:SymbolIcon Timer24}">
+                    <ui:ToggleSwitch IsChecked="{Binding Draft.Recording.ShowCountdown}" />
+                </ui:CardControl>
+
                 <!-- Library -->
                 <TextBlock Style="{StaticResource Section}" Text="Library" />
                 <ui:CardControl Icon="{ui:SymbolIcon ScanText24}">

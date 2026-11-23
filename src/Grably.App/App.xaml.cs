@@ -26,7 +26,11 @@ public partial class App : Application
         DispatcherUnhandledException += OnDispatcherUnhandledException;
 
         // Sign-out or shutdown closes windows without asking; keep unsaved annotations in their projects.
-        SessionEnding += (_, _) => _services.GetService<Editor.EditorService>()?.SaveForSessionEnd();
+        SessionEnding += (_, _) =>
+        {
+            _services.GetService<Recording.RecordingController>()?.StopForSessionEnd();
+            _services.GetService<Editor.EditorService>()?.SaveForSessionEnd();
+        };
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             _logger.LogCritical(e.ExceptionObject as Exception, "Unhandled error (terminating: {Terminating})", e.IsTerminating);
         TaskScheduler.UnobservedTaskException += (_, e) =>
@@ -84,6 +88,8 @@ public partial class App : Application
             _services.GetRequiredService<TrayIconController>().Show();
             _services.GetRequiredService<HotkeyController>().Start();
             _services.GetRequiredService<Text.TextIndexer>().Start();
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, async () =>
+                await _services.GetRequiredService<Recording.RecordingController>().OfferRecoveryAsync());
             _logger.LogInformation("Ready");
 
             if (!_options.Background)

@@ -107,8 +107,9 @@ public class RecordingCoreTests
                 Encoder = "h264_qsv",
             };
 
+            session = session with { AudioTracks = ["system.f32", "microphone.f32"] };
             session.Save(folder);
-            Assert.Equal(session, RecordingSession.Load(folder));
+            Assert.Equivalent(session, RecordingSession.Load(folder), strict: true);
             Assert.StartsWith("20261123-093000-", session.Id);
             Assert.Contains("\"state\": \"recording\"", File.ReadAllText(Path.Combine(folder, RecordingSession.FileName)));
 
@@ -119,6 +120,22 @@ public class RecordingCoreTests
         {
             Directory.Delete(folder, recursive: true);
         }
+    }
+
+    [Fact]
+    public void Audio_tracks_are_mixed_at_full_level_into_aac_while_the_video_is_copied()
+    {
+        IReadOnlyList<string> raw = ["-f", "f32le", "-ar", "48000", "-ac", "2"];
+
+        var two = FfmpegArguments.Mux("video.mkv", [("system.f32", raw), ("microphone.f32", raw)], "out.mp4");
+        var one = FfmpegArguments.Mux("video.mkv", [("microphone.f32", raw)], "out.mp4");
+
+        AssertSequence(two, "-f", "f32le", "-ar", "48000", "-ac", "2", "-i", "system.f32");
+        AssertSequence(two, "-filter_complex", "[1:a][2:a]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.97,apad[a]");
+        AssertSequence(two, "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac");
+        Assert.Contains("-shortest", two); // the video decides the length
+        AssertSequence(one, "-filter_complex", "[1:a]apad[a]");
+        Assert.Equal(FfmpegArguments.Remux("video.mkv", "out.mp4"), FfmpegArguments.Mux("video.mkv", [], "out.mp4"));
     }
 
     private static void AssertSequence(IReadOnlyList<string> args, params string[] expected)

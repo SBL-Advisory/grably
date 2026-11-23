@@ -136,6 +136,28 @@ public sealed class LibraryService(AppPaths paths, ILogger<LibraryService> logge
         return item with { Id = Repository.Add(item) };
     });
 
+    /// <summary>Records a finished screen recording, with a thumbnail made from one of its frames.</summary>
+    public LibraryItem? AddRecording(
+        string filePath, TimeSpan duration, int width, int height, BitmapSource? frame, string? sourceApp, string? sourceTitle, DateTime started) =>
+        Guarded("add a recording", () =>
+        {
+            var item = new LibraryItem
+            {
+                Kind = LibraryItemKind.Recording,
+                FilePath = filePath,
+                ThumbnailPath = frame is null ? null : WriteThumbnail(frame),
+                Title = Path.GetFileNameWithoutExtension(filePath),
+                SourceApp = sourceApp,
+                SourceTitle = sourceTitle,
+                CreatedUtc = started.ToUniversalTime(),
+                Width = width,
+                Height = height,
+                DurationMs = (long)duration.TotalMilliseconds,
+                Bytes = SizeOf(filePath),
+            };
+            return item with { Id = Repository.Add(item) };
+        });
+
     /// <summary>
     /// The editor saved <paramref name="filePath"/> (and its project): refresh the item's thumbnail, size and project
     /// link, or add the file as a new item when the library did not know it (first Save as of a new document).

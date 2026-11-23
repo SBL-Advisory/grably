@@ -258,23 +258,29 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public void Saving_the_settings_window_keeps_changes_made_elsewhere_meanwhile()
+    public void Saving_the_settings_window_applies_only_what_it_changed()
     {
         var current = new AppSettings();
-        var draft = current.Clone(); // the window opens
+        var shown = current.Clone(); // the window opens
+        var draft = shown.Clone();
         current.Editor.ToolStyles[EditorTool.Arrow] = new AnnotationStyle { Thickness = 9 }; // an editor closes
-        current.Recording.FrameRate = 60;
-        draft.General.Theme = AppTheme.Dark;
+        current.Recording.FrameRate = 60; // the pre-record bar remembers a choice
+        current.Recording.RecordMicrophone = true;
+        draft.General.Theme = AppTheme.Dark; // the user's edits in the window
         draft.Screenshot.AfterCapture = AfterCaptureAction.ShowPreview;
+        draft.Recording.ShowCountdown = false;
         draft.Hotkeys[HotkeyAction.CaptureRegion] = HotkeyGesture.Parse("Ctrl+Shift+S");
 
-        var saved = current.WithWindowSectionsFrom(draft);
+        var saved = current.WithChangesFrom(shown, draft);
 
         Assert.Equal(AppTheme.Dark, saved.General.Theme);
         Assert.Equal(AfterCaptureAction.ShowPreview, saved.Screenshot.AfterCapture);
+        Assert.False(saved.Recording.ShowCountdown);
         Assert.Equal(HotkeyGesture.Parse("Ctrl+Shift+S"), saved.Hotkeys[HotkeyAction.CaptureRegion]);
         Assert.Equal(9, saved.Editor.ToolStyles[EditorTool.Arrow].Thickness);
-        Assert.Equal(60, saved.Recording.FrameRate);
+        Assert.Equal(60, saved.Recording.FrameRate); // not touched in the window: the newer value stays
+        Assert.True(saved.Recording.RecordMicrophone);
+        Assert.Equal(HotkeyGesture.Parse("Ctrl+PrintScreen"), saved.Hotkeys[HotkeyAction.CaptureFullScreen]);
 
         draft.General.Theme = AppTheme.Light; // the window stays open after a failed save and keeps editing
         Assert.Equal(AppTheme.Dark, saved.General.Theme);

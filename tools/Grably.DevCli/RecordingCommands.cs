@@ -51,12 +51,13 @@ internal static class RecordingCommands
         }
 
         Report(result);
-        if (ScreenRecorder.SaveAsMp4Async(ffmpeg, result.VideoFile, output).GetAwaiter().GetResult() is { } saveError)
+        if (ScreenRecorder.SaveAsMp4Async(ffmpeg, result.Session, result.SessionFolder, output).GetAwaiter().GetResult() is { } saveError)
         {
             Console.WriteLine($"FAIL {saveError}");
             return 1;
         }
 
+        Directory.Delete(result.SessionFolder, recursive: true); // saved: nothing for the app to offer back
         var failures = 0;
         var probe = Probe(ffmpeg, output);
         Console.WriteLine($"INFO {output}: {probe.Codec} {probe.Width}x{probe.Height} at {probe.FrameRate} fps, {probe.Duration:0.000} s, {probe.Frames} frames, {probe.PixelFormat} {probe.ColorSpace}");
@@ -64,6 +65,10 @@ internal static class RecordingCommands
         failures += Check(Math.Abs(probe.FrameRate - fps) < 0.01, $"frame rate is {probe.FrameRate} (asked {fps})");
         failures += Check(Math.Abs(probe.Duration - seconds) <= 0.2, $"duration {probe.Duration:0.000} s is within 0.2 s of {seconds} s");
         failures += Check(probe.PixelFormat == "yuv420p" || probe.PixelFormat == "nv12", $"pixel format {probe.PixelFormat} plays everywhere");
+        if (args.Contains("--system-audio") || args.Contains("--mic"))
+        {
+            failures += Check(probe.AudioCodec == "aac", $"there is a sound track ({probe.AudioCodec ?? "none"})");
+        }
 
         var frame = ExtractFrame(ffmpeg, output, Math.Min(1, seconds / 2));
         if (pattern)
@@ -131,7 +136,195 @@ internal static class RecordingCommands
         return ok ? 0 : 1;
     }
 
-    private static (RecordingResult Result, string Ffmpeg) RecordFor(string[] args, double seconds, int fps, AppPaths paths)
+    /// <summary>
+    /// synctest [--seconds S] [--pause]: records the test pattern with a white flash and a beep at the same recording
+    /// times (1 s, the middle, S - 1 s), saves the MP4 and measures with ffmpeg where each flash and each beep start.
+    /// With --pause the recording is paused for two seconds in the middle, which must not shift anything.
+    /// </summary>
+    public static int SyncTest(string[] args)
+    {
+        var seconds = double.Parse(OptionValue(args, "--seconds") ?? "10", CultureInfo.InvariantCulture);
+        var paths = AppPaths.FromEnvironment();
+        TimeSpan[] signals = [TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(seconds / 2 + 0.5), TimeSpan.FromSeconds(seconds - 1)];
+        var pauseAt = args.Contains("--pause") ? TimeSpan.FromSeconds(seconds / 2) : (TimeSpan?)null;
+        var (result, ffmpeg) = RecordFor(["--pattern"], seconds, 30, paths, signals, pauseAt);
+        if (!result.Succeeded)
+        {
+            Console.WriteLine($"FAIL recording: {result.Error}");
+            return 1;
+        }
+
+        var output = Path.Combine(paths.DefaultVideosFolder, $"grably-synctest-{DateTime.Now:yyyyMMdd-HHmmss}.mp4");
+        if (ScreenRecorder.SaveAsMp4Async(ffmpeg, result.Session, result.SessionFolder, output).GetAwaiter().GetResult() is { } saveError)
+        {
+            Console.WriteLine($"FAIL {saveError}");
+            return 1;
+        }
+
+        Directory.Delete(result.SessionFolder, recursive: true);
+
+        var flashes = Onsets(RunForLog(ffmpeg, ["-i", output, "-vf", "signalstats,metadata=mode=print:key=lavfi.signalstats.YAVG", "-an", "-f", "null", "-"]));
+        var probe = Probe(ffmpeg, output);
+
+        // silencedetect also reports the end of the file as the end of a silence; that is not a beep.
+        var beeps = BeepOnsets(RunForLog(ffmpeg, ["-i", output, "-af", "silencedetect=n=-30dB:d=0.05", "-vn", "-f", "null", "-"]))
+            .Where(b => b < probe.Duration - 0.1).ToList();
+        Console.WriteLine($"INFO flashes at {string.Join(", ", flashes.Select(f => $"{f:0.000}"))} s; beeps at {string.Join(", ", beeps.Select(b => $"{b:0.000}"))} s");
+        var failures = Check(Math.Abs(probe.Duration - seconds) <= 0.2, $"duration {probe.Duration:0.000} s is within 0.2 s of {seconds} s{(pauseAt is null ? "" : " (the pause is not in it)")}");
+        failures += Check(flashes.Count == signals.Length && beeps.Count == signals.Length, $"{signals.Length} flashes and {signals.Length} beeps found ({flashes.Count}, {beeps.Count})");
+        for (var i = 0; i < Math.Min(flashes.Count, beeps.Count); i++)
+        {
+            var offset = (beeps[i] - flashes[i]) * 1000;
+            failures += Check(Math.Abs(offset) <= 80, $"signal {i + 1}: audio {offset:+0;-0} ms from video (limit 80)");
+            failures += Check(Math.Abs(flashes[i] - signals[i].TotalSeconds) <= 0.05, $"signal {i + 1}: flash at {flashes[i]:0.000} s, sent at {signals[i].TotalSeconds:0.000} s");
+        }
+
+        Console.WriteLine(failures == 0 ? $"PASS synctest {output}" : $"FAIL synctest: {failures} check(s) failed");
+        return failures == 0 ? 0 : 1;
+    }
+
+    /// <summary>Times where the picture turns white: frame times whose average brightness jumps above 200.</summary>
+    private static List<double> Onsets(string log)
+    {
+        var onsets = new List<double>();
+        double? time = null;
+        var wasBright = false;
+        foreach (var line in log.Split('\n'))
+        {
+            if (System.Text.RegularExpressions.Regex.Match(line, @"pts_time:([0-9.]+)") is { Success: true } t)
+            {
+                time = double.Parse(t.Groups[1].Value, CultureInfo.InvariantCulture);
+            }
+            else if (System.Text.RegularExpressions.Regex.Match(line, @"YAVG=([0-9.]+)") is { Success: true } y && time is { } at)
+            {
+                var bright = double.Parse(y.Groups[1].Value, CultureInfo.InvariantCulture) > 200;
+                if (bright && !wasBright)
+                {
+                    onsets.Add(at);
+                }
+
+                wasBright = bright;
+            }
+        }
+
+        return onsets;
+    }
+
+    /// <summary>Times where silence ends: the beeps.</summary>
+    private static List<double> BeepOnsets(string log) =>
+        System.Text.RegularExpressions.Regex.Matches(log, @"silence_end: ([0-9.]+)")
+            .Select(m => double.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture))
+            .ToList();
+
+    /// <summary>Runs ffmpeg at info level and returns everything it logged.</summary>
+    private static string RunForLog(string ffmpeg, IEnumerable<string> arguments)
+    {
+        var info = new ProcessStartInfo(ffmpeg) { RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
+        foreach (var a in new[] { "-hide_banner", "-nostats", "-loglevel", "info" }.Concat(arguments))
+        {
+            info.ArgumentList.Add(a);
+        }
+
+        using var process = Process.Start(info)!;
+        var log = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        return log;
+    }
+
+    /// <summary>
+    /// exclusion-test: shows two magenta squares (a layered WPF window like the control bar, and an opaque one),
+    /// excluded from capture, then checks they are absent from a Windows.Graphics.Capture recording and from a GDI
+    /// screenshot of the same area.
+    /// </summary>
+    public static int ExclusionTest(string[] args)
+    {
+        var monitor = MonitorService.GetMonitors().First(m => m.IsPrimary);
+        var area = new PixelRect(monitor.Bounds.X + 100, monitor.Bounds.Y + 100, 640, 320);
+        var layered = new PixelRect(area.X + 40, area.Y + 60, 200, 200);
+        var opaque = new PixelRect(area.X + 380, area.Y + 60, 200, 200);
+        using var shown = new ManualResetEventSlim();
+        var ui = new Thread(() =>
+        {
+            System.Windows.Window Square(PixelRect at, bool transparent)
+            {
+                var window = new System.Windows.Window
+                {
+                    WindowStyle = System.Windows.WindowStyle.None,
+                    AllowsTransparency = transparent,
+                    Background = System.Windows.Media.Brushes.Magenta,
+                    ShowInTaskbar = false,
+                    Topmost = true,
+                    ShowActivated = false,
+                    Width = 10,
+                    Height = 10,
+                    Title = "Grably exclusion test",
+                };
+                window.SourceInitialized += (_, _) =>
+                {
+                    var handle = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+                    WindowActions.ExcludeFromCapture(handle);
+                    ScreenPointer.PlaceTopmost(handle, at);
+                };
+                window.Show();
+                return window;
+            }
+
+            var a = Square(layered, transparent: true);
+            var b = Square(opaque, transparent: false);
+            a.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, () => shown.Set());
+            System.Windows.Threading.Dispatcher.Run();
+        });
+        ui.SetApartmentState(ApartmentState.STA);
+        ui.IsBackground = true;
+        ui.Start();
+        shown.Wait(TimeSpan.FromSeconds(5));
+        Thread.Sleep(500);
+
+        var failures = 0;
+        var screenshot = ScreenGrabber.Grab(area);
+        failures += CheckAbsent(screenshot, layered.Offset(-area.X, -area.Y), "GDI screenshot, layered window");
+        failures += CheckAbsent(screenshot, opaque.Offset(-area.X, -area.Y), "GDI screenshot, opaque window");
+
+        var paths = AppPaths.FromEnvironment();
+        var (result, ffmpeg) = RecordFor(["--region", $"{area.X},{area.Y},{area.Width},{area.Height}"], 1.5, 30, paths);
+        System.Windows.Threading.Dispatcher.FromThread(ui)?.InvokeShutdown();
+        if (!result.Succeeded)
+        {
+            Console.WriteLine($"FAIL recording: {result.Error}");
+            return 1;
+        }
+
+        var output = Path.Combine(paths.DefaultVideosFolder, $"grably-exclusion-{DateTime.Now:yyyyMMdd-HHmmss}.mp4");
+        ScreenRecorder.SaveAsMp4Async(ffmpeg, result.Session, result.SessionFolder, output).GetAwaiter().GetResult();
+        var frame = ExtractFrame(ffmpeg, output, 0.8);
+        failures += CheckAbsent(frame, layered.Offset(-area.X, -area.Y), "recording, layered window");
+        failures += CheckAbsent(frame, opaque.Offset(-area.X, -area.Y), "recording, opaque window");
+        File.Delete(output);
+        Directory.Delete(result.SessionFolder, recursive: true);
+        Console.WriteLine(failures == 0 ? "PASS exclusion-test: Grably's windows stay out of screenshots and recordings" : $"FAIL exclusion-test: {failures} check(s) failed");
+        return failures == 0 ? 0 : 1;
+    }
+
+    private static int CheckAbsent(PixelBuffer image, PixelRect square, string what)
+    {
+        var magenta = 0;
+        for (var y = square.Y + 10; y < square.Bottom - 10; y += 4)
+        {
+            for (var x = square.X + 10; x < square.Right - 10; x += 4)
+            {
+                var rgb = image.GetRgb(x, y);
+                if (((rgb >> 16) & 0xFF) > 220 && ((rgb >> 8) & 0xFF) < 40 && (rgb & 0xFF) > 220)
+                {
+                    magenta++;
+                }
+            }
+        }
+
+        return Check(magenta == 0, $"{what}: excluded ({magenta} magenta samples)");
+    }
+
+    private static (RecordingResult Result, string Ffmpeg) RecordFor(
+        string[] args, double seconds, int fps, AppPaths paths, IReadOnlyList<TimeSpan>? signals = null, TimeSpan? pauseAt = null)
     {
         var ffmpeg = FfmpegLocator.Find();
         var options = new RecorderOptions
@@ -141,11 +334,29 @@ internal static class RecordingCommands
             PreferNv12 = !args.Contains("--bgra"),
             Ffmpeg = ffmpeg,
             SessionsFolder = paths.SessionsFolder,
+            SystemAudio = args.Contains("--system-audio"),
+            Microphone = args.Contains("--mic"),
+            TestSignals = signals,
         };
         var logger = new ConsoleLogger();
         var recorder = ScreenRecorder.StartAsync(options, new EncoderProbe(ffmpeg, logger), logger).GetAwaiter().GetResult();
+        foreach (var warning in recorder.Warnings)
+        {
+            Console.WriteLine($"WARN {warning}");
+        }
+
         var stop = new ManualResetEventSlim();
         recorder.SourceClosed += (_, _) => stop.Set();
+        recorder.Failed += (_, _) => stop.Set();
+        if (pauseAt is { } at)
+        {
+            // Pause for two seconds of wall time in the middle: the recording time (and its length) must not include it.
+            stop.Wait(at - recorder.Elapsed);
+            recorder.Pause();
+            Thread.Sleep(2000);
+            recorder.Resume();
+        }
+
         stop.Wait(TimeSpan.FromSeconds(seconds) - recorder.Elapsed);
         return (recorder.StopAsync().GetAwaiter().GetResult(), ffmpeg);
     }
@@ -180,7 +391,10 @@ internal static class RecordingCommands
             $"INFO {result.Session.Target}: {result.Session.Width}x{result.Session.Height} {result.Format} with {result.Session.Encoder}, "
             + $"{result.Frames} frames ({result.Composed} made, {result.Repeats} repeated late, {result.Dropped} dropped for the encoder, {result.DroppedAtStart} of them while starting)");
 
-    private sealed record ProbeResult(string Codec, int Width, int Height, double FrameRate, double Duration, long Frames, string PixelFormat, string ColorSpace);
+    private sealed record ProbeResult(string Codec, int Width, int Height, double FrameRate, double Duration, long Frames, string PixelFormat, string ColorSpace)
+    {
+        public string? AudioCodec { get; init; }
+    }
 
     private static ProbeResult Probe(string ffmpeg, string video)
     {
@@ -195,6 +409,15 @@ internal static class RecordingCommands
         var json = JsonDocument.Parse(process.StandardOutput.ReadToEnd()).RootElement;
         process.WaitForExit();
         var stream = json.GetProperty("streams")[0];
+        var audio = new ProcessStartInfo(info.FileName) { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+        foreach (var a in new[] { "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=codec_name", "-of", "csv=p=0", video })
+        {
+            audio.ArgumentList.Add(a);
+        }
+
+        using var audioProcess = Process.Start(audio)!;
+        var audioCodec = audioProcess.StandardOutput.ReadToEnd().Trim();
+        audioProcess.WaitForExit();
         var rate = stream.GetProperty("avg_frame_rate").GetString()!.Split('/');
         return new ProbeResult(
             stream.GetProperty("codec_name").GetString()!,
@@ -204,7 +427,10 @@ internal static class RecordingCommands
             double.Parse(json.GetProperty("format").GetProperty("duration").GetString()!, CultureInfo.InvariantCulture),
             long.Parse(stream.GetProperty("nb_read_packets").GetString()!, CultureInfo.InvariantCulture),
             stream.GetProperty("pix_fmt").GetString()!,
-            stream.TryGetProperty("color_space", out var space) ? space.GetString()! : "?");
+            stream.TryGetProperty("color_space", out var space) ? space.GetString()! : "?")
+        {
+            AudioCodec = audioCodec.Length == 0 ? null : audioCodec,
+        };
     }
 
     private static PixelBuffer ExtractFrame(string ffmpeg, string video, double seconds)

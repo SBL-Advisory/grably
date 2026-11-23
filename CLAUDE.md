@@ -15,10 +15,12 @@ tools/Grably.DevCli/bin/Debug/net10.0-windows10.0.26100.0/grably-dev.exe help   
 powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/capture.ps1     # end-to-end checks on the real desktop
 powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/editor.ps1      #   (see tests/E2E/README.md)
 powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/scrolling.ps1   #   scrolling capture and capture text
+powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/recording.ps1   #   a recording from hotkey to library
 python tools/brand/build_brand.py                                                  # regenerate assets/brand
 ./tools/bump-version.ps1 patch                                                     # bump <Version> in Directory.Build.props
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/fetch-ffmpeg.ps1         # download the pinned LGPL ffmpeg (before building, for recording)
 grably-dev record --pattern --seconds 5 | record --monitor 0 | bench --monitor 1    # recording engine checks (ffprobe, colours, drops)
+grably-dev synctest --seconds 10 --pause | exclusion-test                          # audio/video sync (no sound played); chrome stays out of captures
 ```
 
 Set `GRABLY_HOME` to a scratch folder before running the app, DevCli or end-to-end checks so settings, data and logs go there instead of the real profile. Logs: `<data>/logs/grably-YYYYMMDD.log`.

@@ -42,7 +42,12 @@ public sealed class CaptureOverlayWindow : Window
         Cursor = Cursors.Cross;
         Content = _surface;
 
-        SourceInitialized += (_, _) => Place();
+        SourceInitialized += (_, _) =>
+        {
+            // A screenshot taken while recording must not put the overlay into the video.
+            Platform.Display.WindowActions.ExcludeFromCapture(new System.Windows.Interop.WindowInteropHelper(this).Handle);
+            Place();
+        };
         Loaded += (_, _) => Place();
         DpiChanged += (_, _) => Dispatcher.BeginInvoke(Place);
         _selection.Changed += OnSelectionChanged;

@@ -121,9 +121,17 @@ internal sealed class FrameCompositor : IDisposable
     }
 
     /// <summary>Colour bars, with a white square that moves one step per frame so frames can be told apart.</summary>
-    public void DrawTestPattern(long frame)
+    /// <param name="flash">The whole frame white instead (the sync test's visual signal).</param>
+    public void DrawTestPattern(long frame, bool flash = false)
     {
         _d2d.BeginDraw();
+        if (flash)
+        {
+            _d2d.Clear(new Color4(1, 1, 1, 1));
+            _d2d.EndDraw();
+            return;
+        }
+
         var barWidth = (float)Width / TestPattern.Bars.Count;
         for (var i = 0; i < TestPattern.Bars.Count; i++)
         {

@@ -48,6 +48,12 @@ public sealed partial class LibraryItemViewModel(LibraryItem item) : ObservableO
                 parts.Add($"{Item.Width} × {Item.Height}");
             }
 
+            if (Item.DurationMs is { } ms)
+            {
+                var duration = TimeSpan.FromMilliseconds(ms);
+                parts.Add(duration.TotalHours >= 1 ? duration.ToString(@"h\:mm\:ss") : duration.ToString(@"m\:ss"));
+            }
+
             if (!string.IsNullOrEmpty(Item.SourceApp))
             {
                 parts.Add(Item.SourceApp);

@@ -22,6 +22,18 @@ public sealed class HotkeyController(
 
     private Dictionary<HotkeyAction, HotkeyGesture>? _applied;
     private bool _suspended;
+    private bool _recordingActive;
+
+    /// <summary>
+    /// While a recording runs, the pause hotkey is registered too (it stays free the rest of the time, since its
+    /// keys are ordinary shortcuts elsewhere).
+    /// </summary>
+    public void SetRecordingActive(bool active)
+    {
+        _recordingActive = active;
+        _applied = null;
+        ApplyFromSettings();
+    }
 
     /// <summary>
     /// Releases Grably's hotkeys (while the settings window records a new one, so pressing PrintScreen there
@@ -55,7 +67,7 @@ public sealed class HotkeyController(
         }
 
         // Pause is only registered while recording, so it does not hold on to the key combination otherwise.
-        var bindings = settings.Current.Hotkeys.Where(b => b.Key != HotkeyAction.PauseRecording)
+        var bindings = settings.Current.Hotkeys.Where(b => b.Key != HotkeyAction.PauseRecording || _recordingActive)
             .ToDictionary(b => b.Key, b => b.Value);
         if (_applied is not null && _applied.Count == bindings.Count && !_applied.Except(bindings).Any()
             && Registrations.All(r => r.Succeeded))

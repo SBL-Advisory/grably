@@ -16,7 +16,18 @@ namespace Grably.App.Library;
 public sealed class LibraryActions(
     LibraryService library, EditorService editors, UserNotifications notifications, ILogger<LibraryActions> logger)
 {
-    public void Open(LibraryItem item) => editors.OpenLibraryItem(item);
+    /// <summary>Screenshots open in the editor; recordings in the default video player until the trim editor exists (M9).</summary>
+    public void Open(LibraryItem item)
+    {
+        if (item.Kind == LibraryItemKind.Screenshot)
+        {
+            editors.OpenLibraryItem(item);
+        }
+        else if (Exists(item))
+        {
+            Try("open the video", () => Process.Start(new ProcessStartInfo(item.FilePath!) { UseShellExecute = true }));
+        }
+    }
 
     public void CopyImage(LibraryItem item)
     {

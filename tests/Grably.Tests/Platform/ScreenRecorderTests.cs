@@ -30,7 +30,7 @@ public sealed class ScreenRecorderTests : IDisposable
         Assert.True(new FileInfo(result.VideoFile).Length > 1000);
 
         var mp4 = Path.Combine(_folder, "out.mp4");
-        Assert.Null(await ScreenRecorder.SaveAsMp4Async(ffmpeg, result.VideoFile, mp4));
+        Assert.Null(await ScreenRecorder.SaveAsMp4Async(ffmpeg, result.Session, result.SessionFolder, mp4));
         Assert.True(File.Exists(mp4));
     }
 }

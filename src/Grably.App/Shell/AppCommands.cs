@@ -96,9 +96,9 @@ public sealed class AppCommands(
 
     public void CaptureText() => _ = services.GetRequiredService<Text.TextCaptureService>().CaptureAsync();
 
-    public void ToggleRecording() => NotYet("Screen recording", "M7");
+    public void ToggleRecording() => _ = services.GetRequiredService<Recording.RecordingController>().ToggleAsync();
 
-    public void PauseRecording() => NotYet("Pause recording", "M7");
+    public void PauseRecording() => services.GetRequiredService<Recording.RecordingController>().TogglePause();
 
     public void OpenSettings()
     {
@@ -136,9 +136,16 @@ public sealed class AppCommands(
         _library.Activate();
     }
 
-    public void Exit()
+    public void Exit() => _ = ExitAsync();
+
+    private async Task ExitAsync()
     {
         logger.LogInformation("Exit requested");
+        if (!await services.GetRequiredService<Recording.RecordingController>().ConfirmExitAsync())
+        {
+            logger.LogInformation("Exit cancelled to keep the recording going");
+            return;
+        }
 
         // Ask about unsaved editors first: during Shutdown, WPF ignores a window's request to stay open.
         if (!services.GetRequiredService<Editor.EditorService>().ConfirmCloseAll())

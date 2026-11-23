@@ -36,18 +36,40 @@ public sealed class AppSettings
     };
 
     /// <summary>
-    /// A copy of these settings with the sections the settings window edits (general, hotkeys, screenshots) taken
-    /// from <paramref name="edited"/>. Everything else, such as the editor's remembered tool styles, stays as it is
-    /// now, so saving the window never undoes changes made elsewhere while it was open.
+    /// A copy of these settings with what the settings window changed (from <paramref name="original"/>, what it
+    /// showed, to <paramref name="edited"/>) applied. Values it left alone keep their current value, so saving the
+    /// window never undoes changes made elsewhere while it was open: editor tool styles, or the sound and frame-rate
+    /// choices of the pre-record bar.
     /// </summary>
-    public AppSettings WithWindowSectionsFrom(AppSettings edited)
+    public AppSettings WithChangesFrom(AppSettings original, AppSettings edited)
     {
         var result = Clone();
-        var source = edited.Clone();
-        result.General = source.General;
-        result.Hotkeys = source.Hotkeys;
-        result.Screenshot = source.Screenshot;
+        var after = edited.Clone();
+        CopyChanged(original.General, after.General, result.General);
+        CopyChanged(original.Screenshot, after.Screenshot, result.Screenshot);
+        CopyChanged(original.Recording, after.Recording, result.Recording);
+        foreach (var (action, gesture) in after.Hotkeys)
+        {
+            if (!original.Hotkeys.TryGetValue(action, out var before) || before != gesture)
+            {
+                result.Hotkeys[action] = gesture;
+            }
+        }
+
         return result;
+    }
+
+    private static void CopyChanged<T>(T original, T edited, T target)
+        where T : class
+    {
+        foreach (var property in typeof(T).GetProperties().Where(p => p.CanRead && p.CanWrite))
+        {
+            var value = property.GetValue(edited);
+            if (!Equals(property.GetValue(original), value))
+            {
+                property.SetValue(target, value);
+            }
+        }
     }
 
     /// <summary>A key combination given to more than one action, or null when every hotkey is unique.</summary>

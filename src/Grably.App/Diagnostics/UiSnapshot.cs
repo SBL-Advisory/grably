@@ -31,7 +31,17 @@ namespace Grably.App.Diagnostics;
 internal static class UiSnapshot
 {
     private const string Known =
-        "Library, LibraryEmpty, Settings, SettingsConflict, Editor, OverlayHover, OverlayDrag, OverlayAdjust";
+        "Library, LibraryEmpty, Settings, SettingsConflict, Editor, PreRecord, RecordingBar, OverlayHover, OverlayDrag, OverlayAdjust";
+
+    /// <summary>Where recording windows are placed for snapshots: far off every screen.</summary>
+    private static readonly PixelRect OffScreen = new(-30000, -30000, 1280, 720);
+
+    private static Window SampleControlBar()
+    {
+        var bar = new Recording.RecordingControlBar(OffScreen, OffScreen, microphone: true);
+        bar.Update(TimeSpan.FromSeconds(83), paused: false, muted: true);
+        return bar.Window;
+    }
 
     public static int Run(SnapshotRequest request, IServiceProvider services, ILogger logger)
     {
@@ -43,8 +53,10 @@ internal static class UiSnapshot
             {
                 "library" => RenderWindow(SampleLibrary(services, scratch, withItems: true)),
                 "libraryempty" => RenderWindow(SampleLibrary(services, scratch, withItems: false)),
-                "settings" => RenderWindow(SampleSettings(services, conflict: false), height: 1950),
-                "settingsconflict" => RenderWindow(SampleSettings(services, conflict: true), height: 1950),
+                "settings" => RenderWindow(SampleSettings(services, conflict: false), height: 2400),
+                "settingsconflict" => RenderWindow(SampleSettings(services, conflict: true), height: 2400),
+                "prerecord" => RenderWindow(new Recording.PreRecordWindow(OffScreen, OffScreen, new Recording.PreRecordChoice(true, true, 30), null).Window),
+                "recordingbar" => RenderWindow(SampleControlBar()),
                 "overlayhover" => RenderOverlay(OverlayScenario.Hover),
                 "overlaydrag" => RenderOverlay(OverlayScenario.Drag),
                 "overlayadjust" => RenderOverlay(OverlayScenario.Adjust),

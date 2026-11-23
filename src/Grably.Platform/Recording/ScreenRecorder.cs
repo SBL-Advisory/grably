@@ -27,6 +27,22 @@ public sealed record RecorderOptions
     /// <summary>Skip the probe and use this encoder.</summary>
     public VideoEncoder? Encoder { get; init; }
 
+    /// <summary>Record what the PC plays (loopback of the default output device, or <see cref="SystemAudioDeviceId"/>).</summary>
+    public bool SystemAudio { get; init; }
+
+    public string? SystemAudioDeviceId { get; init; }
+
+    /// <summary>Record the microphone (the default input device, followed when it changes, or <see cref="MicrophoneDeviceId"/>).</summary>
+    public bool Microphone { get; init; }
+
+    public string? MicrophoneDeviceId { get; init; }
+
+    /// <summary>
+    /// Test pattern only: recording times at which the picture flashes white and a generated audio track beeps, to
+    /// measure audio/video sync.
+    /// </summary>
+    public IReadOnlyList<TimeSpan>? TestSignals { get; init; }
+
     public required string Ffmpeg { get; init; }
 
     /// <summary>Where the session folder (session.json and the Matroska intermediate) is created.</summary>
@@ -63,7 +79,8 @@ public sealed class ScreenRecorder : IAsyncDisposable
     private readonly FrameCompositor _compositor;
     private readonly FfmpegProcess _ffmpeg;
     private readonly FramePacer _pacer;
-    private readonly Stopwatch _clock = new();
+    private readonly RecordingClock _clock;
+    private readonly IReadOnlyList<(AudioTrackWriter Writer, IAudioSource Source)> _audio;
     private readonly object _queueLock = new();
     private readonly Queue<Frame> _queue = new();
     private readonly Stack<byte[]> _free = new();
@@ -73,6 +90,7 @@ public sealed class ScreenRecorder : IAsyncDisposable
     private Frame? _writing;
     private int _extraForWriting;
     private volatile bool _stopping;
+    private Timer? _silence;
     private int _disposed;
     private int _failedRaised;
     private bool _composeDone;
@@ -84,8 +102,11 @@ public sealed class ScreenRecorder : IAsyncDisposable
 
     private ScreenRecorder(
         RecorderOptions options, ILogger logger, GraphicsDevice gpu, ScreenCaptureSource? source, FrameCompositor compositor,
-        FfmpegProcess ffmpeg, RecordingSession session, string folder)
+        FfmpegProcess ffmpeg, RecordingSession session, string folder, RecordingClock clock,
+        IReadOnlyList<(AudioTrackWriter Writer, IAudioSource Source)> audio)
     {
+        _clock = clock;
+        _audio = audio;
         _options = options;
         _logger = logger;
         _gpu = gpu;
@@ -125,7 +146,34 @@ public sealed class ScreenRecorder : IAsyncDisposable
 
     public string VideoFile => Path.Combine(SessionFolder, RecordingSession.VideoFileName);
 
+    /// <summary>Something went wrong that the user should know, but recording goes on (raised on a background thread).</summary>
+    public event EventHandler<string>? Warning;
+
+    /// <summary>Recording time so far, not counting pauses.</summary>
     public TimeSpan Elapsed => _clock.Elapsed;
+
+    public bool IsPaused => _clock.IsPaused;
+
+    /// <summary>Audio tracks that could not be started (no microphone, for example); the recording goes on without them.</summary>
+    public IReadOnlyList<string> Warnings { get; private init; } = [];
+
+    /// <summary>Freezes the recording: no frames, and audio captured meanwhile is left out.</summary>
+    public void Pause() => _clock.Pause();
+
+    public void Resume() => _clock.Resume();
+
+    /// <summary>The microphone track records silence while muted (the timeline goes on).</summary>
+    public bool MicrophoneMuted
+    {
+        get => _audio.Any(a => a.Writer.Kind == AudioTrackKind.Microphone && a.Writer.Muted);
+        set
+        {
+            foreach (var (writer, _) in _audio.Where(a => a.Writer.Kind == AudioTrackKind.Microphone))
+            {
+                writer.Muted = value;
+            }
+        }
+    }
 
     /// <summary>Opens the capture, picks the encoder at the output size, starts ffmpeg and the frame clock.</summary>
     /// <exception cref="InvalidOperationException">Nothing to record, or no encoder works at any size.</exception>
@@ -175,10 +223,17 @@ public sealed class ScreenRecorder : IAsyncDisposable
                 Encoder = encoder.Name,
             };
             var folder = Path.Combine(options.SessionsFolder, session.Id);
-            session.Save(folder);
+            Directory.CreateDirectory(folder);
+            var clock = new RecordingClock();
+            var relay = new WarningRelay();
+            List<(AudioTrackWriter Writer, IAudioSource Source)> audio = [];
             FfmpegProcess? ffmpeg = null;
             try
             {
+                List<string> warnings;
+                (audio, warnings) = StartAudio(options, folder, clock, logger, relay.Raise);
+                session = session with { AudioTracks = audio.Select(a => a.Writer.FileName).ToList() };
+                session.Save(folder);
                 ffmpeg = FfmpegProcess.Start(
                     options.Ffmpeg,
                     FfmpegArguments.Encode(encoder, compositor.OutputFormat, width, height, options.FrameRate, options.Quality, Path.Combine(folder, RecordingSession.VideoFileName)),
@@ -188,8 +243,10 @@ public sealed class ScreenRecorder : IAsyncDisposable
                     options.Target?.LogDescription ?? "test pattern", sourceWidth, sourceHeight, width, height, options.FrameRate, encoder.Name,
                     compositor.OutputFormat);
 
-                var recorder = new ScreenRecorder(options, logger, gpu, source, compositor, ffmpeg, session, folder);
-                recorder._clock.Start();
+                var recorder = new ScreenRecorder(options, logger, gpu, source, compositor, ffmpeg, session, folder, clock, audio) { Warnings = warnings };
+                relay.Target = recorder;
+                recorder._clock.Start(); // audio is already running, so it is ready at zero
+                recorder._silence = new Timer(_ => recorder.PadSilence(), null, 500, 500);
                 recorder._composeThread.Start();
                 recorder._writeThread.Start();
                 return recorder;
@@ -198,6 +255,7 @@ public sealed class ScreenRecorder : IAsyncDisposable
             {
                 // Never leave an orphaned ffmpeg, or a session that crash recovery would take for an interrupted recording.
                 ffmpeg?.Dispose();
+                StopAudio(audio);
                 (session with { State = SessionState.Failed }).Save(folder);
                 throw;
             }
@@ -221,6 +279,9 @@ public sealed class ScreenRecorder : IAsyncDisposable
         {
             _error ??= $"ffmpeg stopped taking frames and was stopped: {_ffmpeg.Errors}";
         }
+
+        _silence?.Dispose();
+        StopAudio(_audio, _pacer.Duration);
 
         if (!await _ffmpeg.WaitAsync(TimeSpan.FromSeconds(60)))
         {
@@ -259,6 +320,8 @@ public sealed class ScreenRecorder : IAsyncDisposable
         }
 
         await JoinWorkersAsync(TimeSpan.FromSeconds(5));
+        _silence?.Dispose();
+        StopAudio(_audio);
         _ffmpeg.Dispose();
         _source?.Dispose(); // before the device: a late capture callback must find the source closed
         lock (_gpu.Lock)
@@ -291,12 +354,21 @@ public sealed class ScreenRecorder : IAsyncDisposable
         return clean;
     }
 
-    /// <summary>Remuxes the Matroska intermediate into an MP4 (no re-encoding) with its index at the front.</summary>
-    /// <param name="codec">h264 or hevc (HEVC gets the hvc1 tag Apple players need).</param>
-    public static async Task<string?> SaveAsMp4Async(string ffmpeg, string matroska, string mp4, string codec = "h264")
+    /// <summary>
+    /// Writes the session's MP4: the video copied as it is (no re-encoding), the audio tracks mixed and encoded to
+    /// AAC, index at the front. Also used to recover a session after a crash.
+    /// </summary>
+    public static async Task<string?> SaveAsMp4Async(string ffmpeg, RecordingSession session, string folder, string mp4)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(mp4))!);
-        var (code, errors) = await FfmpegProcess.RunAsync(ffmpeg, FfmpegArguments.Remux(matroska, mp4, codec), TimeSpan.FromMinutes(10));
+        var codec = VideoEncoders.Candidates.FirstOrDefault(e => e.Name == session.Encoder)?.Codec ?? "h264";
+        var tracks = session.AudioTracks
+            .Select(name => Path.Combine(folder, name))
+            .Where(path => File.Exists(path) && new FileInfo(path).Length > 0)
+            .Select(path => (path, AudioTrackFormat.FfmpegInput))
+            .ToList();
+        var arguments = FfmpegArguments.Mux(Path.Combine(folder, RecordingSession.VideoFileName), tracks, mp4, codec);
+        var (code, errors) = await FfmpegProcess.RunAsync(ffmpeg, arguments, TimeSpan.FromMinutes(30));
         return code == 0 ? null : $"ffmpeg could not write {Path.GetFileName(mp4)} ({code}): {errors}";
     }
 
@@ -333,6 +405,12 @@ public sealed class ScreenRecorder : IAsyncDisposable
         {
             while (!_stopping)
             {
+                if (_clock.IsPaused)
+                {
+                    Thread.Sleep(5); // the recording time stands still; so do the frames
+                    continue;
+                }
+
                 var due = _pacer.NextDue;
                 var wait = due - _clock.Elapsed;
                 if (wait > TimeSpan.FromMilliseconds(2))
@@ -340,7 +418,7 @@ public sealed class ScreenRecorder : IAsyncDisposable
                     Thread.Sleep(wait - TimeSpan.FromMilliseconds(1));
                 }
 
-                while (_clock.Elapsed < due && !_stopping)
+                while (_clock.Elapsed < due && !_stopping && !_clock.IsPaused)
                 {
                     Thread.SpinWait(64);
                 }
@@ -348,6 +426,11 @@ public sealed class ScreenRecorder : IAsyncDisposable
                 if (_stopping)
                 {
                     break;
+                }
+
+                if (_clock.IsPaused)
+                {
+                    continue;
                 }
 
                 var buffer = Rent();
@@ -358,7 +441,10 @@ public sealed class ScreenRecorder : IAsyncDisposable
                     {
                         if (_source is null)
                         {
-                            _compositor.DrawTestPattern(_pacer.Frames);
+                            var at = _pacer.NextDue;
+                            _compositor.DrawTestPattern(
+                                _pacer.Frames,
+                                _options.TestSignals?.Any(s => at >= s && at < s + TimeSpan.FromMilliseconds(100)) == true);
                         }
                         else
                         {
@@ -465,6 +551,98 @@ public sealed class ScreenRecorder : IAsyncDisposable
                 // Already broken or killed.
             }
         }
+    }
+
+    /// <summary>Opens the audio tracks asked for. One that cannot start is left out with a warning.</summary>
+    /// <summary>
+    /// Keeps quiet tracks filled with silence up to shortly before now (packets can arrive a little late), so sound
+    /// returning after a long silence is not preceded by one huge write on the audio thread.
+    /// </summary>
+    private void PadSilence()
+    {
+        if (_clock.IsPaused || _stopping)
+        {
+            return;
+        }
+
+        var upTo = _clock.Elapsed - TimeSpan.FromMilliseconds(300);
+        foreach (var (writer, _) in _audio)
+        {
+            writer.PadTo(upTo);
+        }
+    }
+
+    private static (List<(AudioTrackWriter Writer, IAudioSource Source)> Started, List<string> Warnings) StartAudio(
+        RecorderOptions options, string folder, RecordingClock clock, ILogger logger, Action<string> warn)
+    {
+        var warnings = new List<string>();
+        var wanted = new List<(AudioTrackKind Kind, string? Device)>();
+        if (options.Target is null && options.TestSignals is { Count: > 0 })
+        {
+            wanted.Add((AudioTrackKind.TestTone, null));
+        }
+
+        if (options.SystemAudio)
+        {
+            wanted.Add((AudioTrackKind.System, options.SystemAudioDeviceId));
+        }
+
+        if (options.Microphone)
+        {
+            wanted.Add((AudioTrackKind.Microphone, options.MicrophoneDeviceId));
+        }
+
+        var started = new List<(AudioTrackWriter, IAudioSource)>();
+        foreach (var (kind, device) in wanted)
+        {
+            var writer = new AudioTrackWriter(kind, folder, clock);
+            IAudioSource source = kind == AudioTrackKind.TestTone
+                ? new TestToneSource(writer, clock, options.TestSignals!)
+                : new WasapiAudioSource(kind, device, writer, logger, warn);
+            try
+            {
+                source.Start();
+                started.Add((writer, source));
+                logger.LogInformation("Recording {Track} audio", kind);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // Microphone access turned off, no device, a driver error: record without this track.
+                logger.LogWarning(ex, "{Track} audio could not be recorded", kind);
+                warnings.Add(kind == AudioTrackKind.Microphone
+                    ? "The microphone could not be recorded. Check that one is connected and that apps may use it."
+                    : "The PC's sound could not be recorded.");
+                source.Dispose();
+                writer.Dispose();
+            }
+        }
+
+        return (started, warnings);
+    }
+
+    /// <param name="end">Pad every track with silence to this recording time (the video's length).</param>
+    private static void StopAudio(IEnumerable<(AudioTrackWriter Writer, IAudioSource Source)> audio, TimeSpan? end = null)
+    {
+        foreach (var (writer, source) in audio)
+        {
+            source.Dispose();
+            if (end is { } length)
+            {
+                writer.Finish(length);
+            }
+            else
+            {
+                writer.Dispose();
+            }
+        }
+    }
+
+    /// <summary>Passes warnings from audio sources (started before the recorder exists) on to its event.</summary>
+    private sealed class WarningRelay
+    {
+        public ScreenRecorder? Target { get; set; }
+
+        public void Raise(string message) => Target?.Warning?.Invoke(Target, message);
     }
 
     private void Fail(string error)

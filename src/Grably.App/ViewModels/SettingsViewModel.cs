@@ -37,6 +37,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly StartupRegistration _startup;
     private readonly ILogger<SettingsViewModel> _logger;
     private bool _startedWithWindows;
+    private AppSettings _shown;
 
     public SettingsViewModel(
         SettingsStore store, HotkeyController hotkeys, ThemeController theme, AppPaths paths, StartupRegistration startup,
@@ -60,6 +61,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         ShowStatus(hotkeys.Registrations);
         ScreenshotsFolder = Draft.General.ScreenshotsFolder ?? paths.DefaultScreenshotsFolder;
         VideosFolder = Draft.General.VideosFolder ?? paths.DefaultVideosFolder;
+        _shown = Draft.Clone();
         if (Delays.All(d => d.Value != Draft.Screenshot.DelaySeconds))
         {
             Delays = [.. Delays, new(Draft.Screenshot.DelaySeconds, $"{Draft.Screenshot.DelaySeconds} seconds")];
@@ -81,6 +83,18 @@ public sealed partial class SettingsViewModel : ObservableObject
     ];
 
     public IReadOnlyList<Option<ImageFormat>> Formats { get; } = [new(ImageFormat.Png, "PNG (sharp, larger)"), new(ImageFormat.Jpeg, "JPEG (smaller)")];
+
+    public IReadOnlyList<Option<int>> FrameRates { get; } = [new(15, "15 frames per second"), new(30, "30 frames per second"), new(60, "60 frames per second")];
+
+    public IReadOnlyList<Option<VideoQuality>> Qualities { get; } =
+        [new(VideoQuality.High, "High (larger files)"), new(VideoQuality.Standard, "Standard (smaller files)")];
+
+    public IReadOnlyList<Option<int?>> MaxHeights { get; } =
+        [new(null, "Same as the screen"), new(1440, "At most 1440p"), new(1080, "At most 1080p"), new(720, "At most 720p")];
+
+    /// <summary>"Windows default" (followed when it changes) and the connected microphones.</summary>
+    public IReadOnlyList<Option<string?>> Microphones { get; } =
+        [new(null, "Windows default"), .. Grably.Platform.Recording.AudioDevices.Microphones().Select(d => new Option<string?>(d.Id, d.Name))];
 
     public IReadOnlyList<Option<int>> Delays { get; private set; } =
         [new(0, "No delay"), new(3, "3 seconds"), new(5, "5 seconds"), new(10, "10 seconds")];
@@ -139,7 +153,8 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         try
         {
-            _store.Save(_store.Current.WithWindowSectionsFrom(Draft));
+            _store.Save(_store.Current.WithChangesFrom(_shown, Draft));
+            _shown = Draft.Clone();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

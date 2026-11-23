@@ -65,6 +65,40 @@ public static class FfmpegArguments
         "-movflags", "+faststart", "-y", output,
     ];
 
+    /// <summary>
+    /// The final MP4: the video copied as it is, audio tracks (raw files, each with its ffmpeg input options) mixed
+    /// at full level and encoded to AAC. Audio is padded so the video decides the length. Without tracks this is
+    /// <see cref="Remux"/>.
+    /// </summary>
+    public static IReadOnlyList<string> Mux(
+        string video, IReadOnlyList<(string Path, IReadOnlyList<string> InputOptions)> audio, string output, string codec = "h264")
+    {
+        if (audio.Count == 0)
+        {
+            return Remux(video, output, codec);
+        }
+
+        var args = new List<string> { "-hide_banner", "-loglevel", "error", "-nostats", "-i", video };
+        foreach (var (path, options) in audio)
+        {
+            args.AddRange(options);
+            args.AddRange(["-i", path]);
+        }
+
+        var inputs = string.Concat(Enumerable.Range(1, audio.Count).Select(i => $"[{i}:a]"));
+        var mix = audio.Count == 1
+            ? $"{inputs}apad[a]"
+            : $"{inputs}amix=inputs={audio.Count}:duration=longest:normalize=0,alimiter=limit=0.97,apad[a]";
+        args.AddRange(["-filter_complex", mix, "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest"]);
+        if (codec == "hevc")
+        {
+            args.AddRange(["-tag:v", "hvc1"]);
+        }
+
+        args.AddRange(["-movflags", "+faststart", "-y", output]);
+        return args;
+    }
+
     /// <summary>One frame at <paramref name="seconds"/> as an image (checks and previews).</summary>
     public static IReadOnlyList<string> ExtractFrame(string video, double seconds, string output) =>
         ["-hide_banner", "-loglevel", "error", "-ss", seconds.ToString("0.###", CultureInfo.InvariantCulture), "-i", video, "-frames:v", "1", "-y", output];

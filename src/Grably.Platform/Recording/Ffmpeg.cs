@@ -47,6 +47,28 @@ public static class FfmpegLocator
 
     /// <summary>ffprobe beside the given ffmpeg.</summary>
     public static string ProbeNextTo(string ffmpeg) => Path.Combine(Path.GetDirectoryName(ffmpeg)!, "ffprobe.exe");
+
+    /// <summary>A media file's length from ffprobe, or null when it cannot be read.</summary>
+    public static async Task<TimeSpan?> DurationAsync(string ffmpeg, string file)
+    {
+        var info = new ProcessStartInfo(ProbeNextTo(ffmpeg)) { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+        foreach (var argument in new[] { "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file })
+        {
+            info.ArgumentList.Add(argument);
+        }
+
+        using var process = Process.Start(info);
+        if (process is null)
+        {
+            return null;
+        }
+
+        var text = await process.StandardOutput.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        return double.TryParse(text.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var seconds)
+            ? TimeSpan.FromSeconds(seconds)
+            : null;
+    }
 }
 
 /// <summary>
@@ -174,6 +196,14 @@ public sealed class EncoderProbe(string ffmpeg, ILogger? logger = null)
         if (_chosen.TryGetValue((width, height), out var known))
         {
             return known;
+        }
+
+        // An encoder that works at one ordinary size works at another; only very large frames (over 4096 pixels,
+        // where NVENC H.264 stops) need their own test.
+        if (width <= 4096 && height <= 4096
+            && _chosen.FirstOrDefault(c => c.Value is not null && c.Key.Item1 <= 4096 && c.Key.Item2 <= 4096).Value is { } usual)
+        {
+            return usual;
         }
 
         var timedOut = false;

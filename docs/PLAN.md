@@ -12,8 +12,8 @@ Each milestone is one GitHub issue and one stacked PR (each branch starts from t
 - [x] M3 Annotation editor - issue #7, PR #8
 - [x] M4 Library and Settings UI - issue #9, PR #10
 - [x] M5 OCR and scrolling capture - issue #11, PR #12
-- [x] M6 Recording engine, video only - issue #13
-- [ ] M7 Audio and recording UX
+- [x] M6 Recording engine, video only - issue #13, PR #14
+- [x] M7 Audio and recording UX - issue #15
 - [ ] M8 Cursor effects and webcam
 - [ ] M9 Trim editor and export
 - [ ] M10 Packaging, updates, release
@@ -76,6 +76,31 @@ Decisions made while building, which take precedence over the plan text below:
   - A failed start leaves no orphaned ffmpeg and no "recording" session.
   - Odd sizes are cropped by a pixel, never resampled.
   - Window titles go into the session only, never the log.
+- **Capture exclusion works for layered WPF windows** (checked first, as planned, by `grably-dev exclusion-test`): `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` keeps both layered and opaque windows out of GDI screenshots and Windows.Graphics.Capture recordings. So the control bar, countdown and area outline are ordinary WPF windows; the outline also sits just outside the area.
+- **Recording clock** (`Core/Recording/RecordingClock`): one pausable clock on the performance counter in 100-ns ticks, the unit of WASAPI's packet timestamps. The frame pacer runs on it, and every audio packet is placed on the timeline by its own capture timestamp (`AudioTimeline`). Gaps (loopback sends nothing during silence, a device switch) become silence, drift beyond 20 ms drops the overlap, and packets captured during a pause are left out. This replaces the plan's end-of-recording drift correction: tracks are already on the clock.
+- **Audio** (`Platform/Recording/AudioCapture`): NAudio 3.3's `WasapiRecorder`, whose packets carry the QPC timestamp. Tracks are forced to 48 kHz stereo float (Windows converts) and written raw (`*.f32`), so a crash loses nothing and there is no 4 GB limit. The microphone follows the default device through Windows stream routing; loopback reopens when the default output changes (checked every second). Mute writes silence. A source that cannot start becomes a warning, and the recording goes on.
+- **Mux:** video stream-copied, tracks mixed with `amix normalize=0` and a limiter, AAC 192 kb/s, `apad` + `-shortest` so the video decides the length, `+faststart`.
+- **Sync, measured with `grably-dev synctest`** (a white flash and a 1 kHz beep at the same recording times, from a generated track that travels the same path as WASAPI packets):
+  - 10 s: audio 1 to 9 ms from video.
+  - With a 2-second pause: the pause is left out of the duration and sync is unchanged.
+  - The real WASAPI latency on speakers is a manual check.
+- **Recording flow** (`App/Recording/RecordingController`):
+  - Picking: the overlay picks the target. A clicked window is recorded as a window (followed if it moves), a whole screen as a monitor, anything else as a region on one screen.
+  - Before recording: the pre-record bar has PC sound, microphone with a live level, fps, Record and Cancel. The countdown runs while the encoder is probed, so recording starts the moment it ends.
+  - While recording: the control bar has the timer, pause, mute, stop and discard. The pause hotkey is registered only while recording, and the tray shows the recording icon.
+  - When stopped: the MP4 is saved to the videos folder (`Grably_yyyy-MM-dd_HH-mm-ss.mp4`) and added to the library with a thumbnail and duration, and the session folder is removed.
+  - Interrupted recordings: sessions with a video but no saved MP4 are offered at startup (save, delete, or ask again).
+  - Library: recordings open in the default player until the trim editor (M9).
+- **Interruptions and errors:**
+  - Exit asks to stop and save a running recording. Sign-out closes the recording files properly; the recording is offered back at the next start.
+  - The recovery prompt has explicit Save / Delete / Later buttons, and Delete uses the Recycle Bin.
+  - A saved session records its `outputPath` before it is removed, so it is never saved twice.
+  - An audio source that fails to start, or a failed output-device switch, becomes a warning instead of aborting the recording or crashing Grably (the switch is retried every second).
+  - A failure after the recorder started stops and saves it, never leaving it running invisibly.
+  - Discard pauses while it asks.
+- **Audio timestamps:** a packet with no or an absurd timestamp is taken to end now. Quiet tracks are filled with silence as time passes (up to 300 ms behind), never in one huge write when sound returns.
+- **Settings merge** became value by value (`AppSettings.WithChangesFrom`): the Settings window applies only what it changed, so pre-record bar choices made while it was open survive.
+- **Recording visibility:** the screenshot overlay and the corner preview are also excluded from capture, so a screenshot taken mid-recording is not in the video. WPF-UI's styles gave plain windows a minimum size, which made the small panels (scrolling capture, preview, recording bars) far too big; they now set `MinWidth`/`MinHeight` to 0.
 - **Measured on the development machine (Intel QSV, 3440x1440 at 125 %):** 30 fps native with no drops and 9.5 ms per frame; 60 fps native with 1 late frame in 8 s; the BGRA fallback keeps up at 30 fps after 3 start-up drops. Test-pattern colours come back within 2 levels on both paths. Captures have no yellow border: borderless capture is granted to the unpackaged app.
 - **UI snapshots** for the Library, Settings and the empty Library use throwaway sample data in a temporary folder, never the user's library: `--ui-snapshot Library|LibraryEmpty|Settings|SettingsConflict`.
 

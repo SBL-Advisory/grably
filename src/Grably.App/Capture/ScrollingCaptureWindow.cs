@@ -28,6 +28,8 @@ internal sealed class ScrollingCaptureWindow : Window
         ShowActivated = false;
         Topmost = true;
         SizeToContent = SizeToContent.WidthAndHeight;
+        MinWidth = 0; // the theme's window style has a minimum size meant for app windows
+        MinHeight = 0;
         SetResourceReference(BackgroundProperty, "ApplicationBackgroundBrush");
         _status.SetResourceReference(TextBlock.ForegroundProperty, "TextFillColorPrimaryBrush");
         Update(0);

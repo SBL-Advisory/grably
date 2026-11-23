@@ -48,6 +48,9 @@ public sealed record RecordingSession
 
     public SessionState State { get; init; } = SessionState.Recording;
 
+    /// <summary>Audio track files in the session folder (raw 48 kHz stereo float), mixed into the MP4 at the end.</summary>
+    public IReadOnlyList<string> AudioTracks { get; init; } = [];
+
     /// <summary>The finished video, once there is one.</summary>
     public string? OutputPath { get; init; }
 

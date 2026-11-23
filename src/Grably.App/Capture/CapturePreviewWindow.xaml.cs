@@ -46,6 +46,7 @@ public partial class CapturePreviewWindow : Window
                 Close();
             }
         };
+        SourceInitialized += (_, _) => WindowActions.ExcludeFromCapture(new WindowInteropHelper(this).Handle); // not in recordings
         Loaded += (_, _) =>
         {
             PlaceInCorner();
