@@ -29,6 +29,7 @@ internal static class ServiceRegistration
         services.AddSingleton<ThemeController>();
         services.AddSingleton<UserNotifications>();
         services.AddSingleton<AppCommands>();
+        services.AddSingleton<UpdateService>();
         services.AddSingleton<TrayIconController>();
         services.AddSingleton<HotkeyController>();
 

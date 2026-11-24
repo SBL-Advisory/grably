@@ -11,9 +11,12 @@ public partial class SettingsWindow : FluentWindow
     private readonly SettingsViewModel _viewModel;
     private int _recording;
 
-    public SettingsWindow(SettingsViewModel viewModel, ThemeController theme)
+    private readonly UpdateService _updates;
+
+    public SettingsWindow(SettingsViewModel viewModel, ThemeController theme, UpdateService updates)
     {
         _viewModel = viewModel;
+        _updates = updates;
         DataContext = viewModel;
         InitializeComponent();
         theme.Attach(this);
@@ -72,6 +75,24 @@ public partial class SettingsWindow : FluentWindow
 
     private void OpenKeyboardSettings_Click(object sender, RoutedEventArgs e) =>
         Process.Start(new ProcessStartInfo("ms-settings:easeofaccess-keyboard") { UseShellExecute = true });
+
+    private void CheckForUpdates_Click(object sender, RoutedEventArgs e) => _ = _updates.CheckAsync(userAsked: true);
+
+    /// <summary>The notices installed next to Grably.exe, or the ones on GitHub when running from a build folder.</summary>
+    private void Licenses_Click(object sender, RoutedEventArgs e)
+    {
+        var notices = System.IO.Path.Combine(AppContext.BaseDirectory, "THIRD-PARTY-NOTICES.md");
+        var target = System.IO.File.Exists(notices) ? notices : $"{UpdateService.Repository}/blob/main/THIRD-PARTY-NOTICES.md";
+        try
+        {
+            Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // No app is set to open .md files: show it in Notepad, which every Windows has.
+            Process.Start(new ProcessStartInfo("notepad.exe", $"\"{notices}\"") { UseShellExecute = true });
+        }
+    }
 
     private void OpenDataFolder_Click(object sender, RoutedEventArgs e) =>
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{_viewModel.DataFolder}\"") { UseShellExecute = true });

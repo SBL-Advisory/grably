@@ -18,7 +18,7 @@ namespace Grably.App.Shell;
 /// recording state, at the exact pixel size Windows uses for the current display scaling.
 /// </summary>
 public sealed class TrayIconController(
-    AppCommands commands, SettingsStore settings, UserNotifications notifications, ILogger<TrayIconController> logger)
+    AppCommands commands, SettingsStore settings, UserNotifications notifications, UpdateService updates, ILogger<TrayIconController> logger)
     : IDisposable
 {
     private static readonly TimeSpan FastRetry = TimeSpan.FromSeconds(2);
@@ -43,6 +43,7 @@ public sealed class TrayIconController(
         _icon.TrayLeftMouseUp += (_, _) => commands.OpenLibrary();
         UpdateImage();
         notifications.Requested += (_, message) => Notify(message);
+        updates.Changed += OnUpdateReady;
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
 
         if (!TryCreate())
@@ -117,9 +118,19 @@ public sealed class TrayIconController(
     {
         _retry?.Stop();
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+        updates.Changed -= OnUpdateReady;
         _icon?.Dispose();
         _icon = null;
         _currentImage?.Dispose();
+    }
+
+    /// <summary>The menu offers Restart to update instead of Check for updates.</summary>
+    private void OnUpdateReady(object? sender, EventArgs e)
+    {
+        if (_icon is not null)
+        {
+            _icon.ContextMenu = BuildMenu();
+        }
     }
 
     private void OnUserPreferenceChanged(object? sender, UserPreferenceChangedEventArgs e)
@@ -164,7 +175,9 @@ public sealed class TrayIconController(
         menu.Items.Add(new Separator());
         menu.Items.Add(Item("Open library", SymbolRegular.Library24, commands.OpenLibrary));
         menu.Items.Add(Item("Settings", SymbolRegular.Settings24, commands.OpenSettings));
-        menu.Items.Add(Item("Check for updates", SymbolRegular.ArrowSync24, commands.CheckForUpdates));
+        menu.Items.Add(updates.ReadyVersion is { } version
+            ? Item($"Restart to update to {version}", SymbolRegular.ArrowCounterclockwise24, commands.RestartToUpdate)
+            : Item("Check for updates", SymbolRegular.ArrowSync24, commands.CheckForUpdates));
         menu.Items.Add(new Separator());
         menu.Items.Add(Item("Exit", SymbolRegular.Dismiss24, commands.Exit));
         return menu;

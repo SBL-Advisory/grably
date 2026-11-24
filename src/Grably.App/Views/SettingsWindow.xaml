@@ -228,10 +228,14 @@
                                 <Run Text="Grably" />
                                 <Run Text="{Binding Version, Mode=OneWay}" />
                             </TextBlock>
-                            <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Free and open source under the MIT license." />
+                            <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Free and open source under the MIT license. Records and exports video with FFmpeg, under the LGPL." />
                         </StackPanel>
                     </ui:CardControl.Header>
-                    <ui:Button Content="Open data folder" Click="OpenDataFolder_Click" />
+                    <StackPanel Orientation="Horizontal">
+                        <ui:Button Content="Check for updates" Margin="0,0,8,0" Click="CheckForUpdates_Click" />
+                        <ui:Button Content="Licenses" Margin="0,0,8,0" Click="Licenses_Click" />
+                        <ui:Button Content="Open data folder" Click="OpenDataFolder_Click" />
+                    </StackPanel>
                 </ui:CardControl>
             </StackPanel>
         </ScrollViewer>

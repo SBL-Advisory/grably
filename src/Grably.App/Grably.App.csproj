@@ -25,10 +25,11 @@
     <Resource Include="..\..\assets\brand\tray\*.ico" Link="Assets\Tray\%(Filename)%(Extension)" />
   </ItemGroup>
 
-  <!-- The bundled LGPL ffmpeg (tools/fetch-ffmpeg.ps1 puts it in ffmpeg/, which git ignores). It is copied next to
+  <!-- The bundled LGPL ffmpeg in ffmpeg/, which git ignores: Grably's minimal build from tools/ffmpeg/build.ps1 (what
+       ships), or the developer download from tools/fetch-ffmpeg.ps1. It is copied, with its licences, next to
        Grably.exe and, through the project reference, next to grably-dev and the tests. -->
   <ItemGroup>
-    <None Include="ffmpeg\*.*" Link="ffmpeg\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="ffmpeg\**\*" Link="ffmpeg\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -38,6 +39,7 @@
     <PackageReference Include="Serilog" />
     <PackageReference Include="Serilog.Extensions.Hosting" />
     <PackageReference Include="Serilog.Sinks.File" />
+    <PackageReference Include="Velopack" />
     <PackageReference Include="VirtualizingWrapPanel" />
     <PackageReference Include="WPF-UI" />
   </ItemGroup>

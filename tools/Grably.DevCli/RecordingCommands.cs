@@ -163,7 +163,7 @@ internal static class RecordingCommands
 
         Directory.Delete(result.SessionFolder, recursive: true);
 
-        var flashes = Onsets(RunForLog(ffmpeg, ["-i", output, "-vf", "signalstats,metadata=mode=print:key=lavfi.signalstats.YAVG", "-an", "-f", "null", "-"]));
+        var flashes = Onsets(RunForLog(ffmpeg, ["-i", output, "-vf", "showinfo", "-an", "-f", "null", "-"]));
         var probe = Probe(ffmpeg, output);
 
         // silencedetect also reports the end of the file as the end of a silence; that is not a beep.
@@ -183,20 +183,20 @@ internal static class RecordingCommands
         return failures == 0 ? 0 : 1;
     }
 
-    /// <summary>Times where the picture turns white: frame times whose average brightness jumps above 200.</summary>
+    /// <summary>
+    /// Times where the picture turns white: frame times whose average brightness (the first plane's mean, which
+    /// <c>showinfo</c> prints with each frame) jumps above 200.
+    /// </summary>
     private static List<double> Onsets(string log)
     {
         var onsets = new List<double>();
-        double? time = null;
         var wasBright = false;
         foreach (var line in log.Split('\n'))
         {
-            if (System.Text.RegularExpressions.Regex.Match(line, @"pts_time:([0-9.]+)") is { Success: true } t)
+            if (System.Text.RegularExpressions.Regex.Match(line, @"pts_time:([0-9.]+)") is { Success: true } t
+                && System.Text.RegularExpressions.Regex.Match(line, @"mean:\[([0-9.]+)") is { Success: true } y)
             {
-                time = double.Parse(t.Groups[1].Value, CultureInfo.InvariantCulture);
-            }
-            else if (System.Text.RegularExpressions.Regex.Match(line, @"YAVG=([0-9.]+)") is { Success: true } y && time is { } at)
-            {
+                var at = double.Parse(t.Groups[1].Value, CultureInfo.InvariantCulture);
                 var bright = double.Parse(y.Groups[1].Value, CultureInfo.InvariantCulture) > 200;
                 if (bright && !wasBright)
                 {

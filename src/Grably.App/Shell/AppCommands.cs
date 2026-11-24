@@ -11,11 +11,9 @@ namespace Grably.App.Shell;
 
 /// <summary>
 /// Every user-facing action, whether it comes from a hotkey, the tray menu or a window. Call on the UI thread.
-/// Actions whose feature is not built yet say so; each is replaced in the milestone named in its message.
 /// </summary>
 public sealed class AppCommands(
-    IServiceProvider services, ScreenshotService screenshots, ForegroundWindowTracker foregroundTracker,
-    UserNotifications notifications, ILogger<AppCommands> logger)
+    IServiceProvider services, ScreenshotService screenshots, ForegroundWindowTracker foregroundTracker, ILogger<AppCommands> logger)
 {
     private LibraryWindow? _library;
     private SettingsWindow? _settings;
@@ -117,7 +115,10 @@ public sealed class AppCommands(
         _settings.Activate();
     }
 
-    public void CheckForUpdates() => NotYet("Updates", "M10");
+    public void CheckForUpdates() => _ = services.GetRequiredService<UpdateService>().CheckAsync(userAsked: true);
+
+    /// <summary>Quits like Exit (with the same questions), then the downloaded update installs and Grably starts again.</summary>
+    public void RestartToUpdate() => _ = ExitAsync(update: true);
 
     public void OpenLibrary()
     {
@@ -136,11 +137,18 @@ public sealed class AppCommands(
         _library.Activate();
     }
 
-    public void Exit() => _ = ExitAsync();
+    public void Exit() => _ = ExitAsync(update: false);
 
-    private async Task ExitAsync()
+    private async Task ExitAsync(bool update)
     {
-        logger.LogInformation("Exit requested");
+        logger.LogInformation(update ? "Restart to update requested" : "Exit requested");
+        var updates = services.GetRequiredService<UpdateService>();
+        if (update && !updates.CanInstall)
+        {
+            logger.LogWarning("No update can be installed now; not restarting");
+            return;
+        }
+
         if (!await services.GetRequiredService<Recording.RecordingController>().ConfirmExitAsync())
         {
             logger.LogInformation("Exit cancelled to keep the recording going");
@@ -160,12 +168,13 @@ public sealed class AppCommands(
             return;
         }
 
-        Application.Current.Shutdown();
-    }
+        // Quit even if the updater could not be started: the recording is already saved, and the downloaded update
+        // installs the next time Grably starts.
+        if (update && !updates.InstallOnExit())
+        {
+            logger.LogWarning("Quitting without restarting; the update installs at the next start");
+        }
 
-    private void NotYet(string feature, string milestone)
-    {
-        logger.LogInformation("{Feature} requested; not built yet (milestone {Milestone})", feature, milestone);
-        notifications.Show($"{feature} is coming soon.");
+        Application.Current.Shutdown();
     }
 }

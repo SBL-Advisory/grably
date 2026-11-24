@@ -89,6 +89,9 @@ public partial class App : Application
             _services.GetRequiredService<TrayIconController>().Show();
             _services.GetRequiredService<HotkeyController>().Start();
             _services.GetRequiredService<Text.TextIndexer>().Start();
+            var updates = _services.GetRequiredService<UpdateService>();
+            updates.RestartRequested += (_, _) => _services.GetRequiredService<AppCommands>().RestartToUpdate();
+            _ = updates.CheckRegularlyAsync();
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, async () =>
                 await _services.GetRequiredService<Recording.RecordingController>().OfferRecoveryAsync());
             _logger.LogInformation("Ready");

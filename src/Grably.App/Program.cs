@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
+using Velopack;
 
 namespace Grably.App;
 
@@ -13,7 +14,13 @@ public static class Program
     [STAThread]
     public static int Main(string[] args)
     {
-        // M10: VelopackApp.Build().Run() must be the very first call here.
+        // First of all: when Velopack's installer, updater or uninstaller starts Grably for one of its hooks, it handles
+        // that and exits here. A downloaded update is installed further down, only once this is the one running Grably.
+        VelopackApp.Build()
+            .SetAutoApplyOnStartup(false)
+            .OnBeforeUninstallFastCallback(_ => RemoveStartup())
+            .Run();
+
         var options = LaunchOptions.Parse(args);
         var paths = AppPaths.FromEnvironment();
         paths.EnsureCreated();
@@ -44,6 +51,11 @@ public static class Program
                 return 1;
             }
 
+            if (Shell.UpdateService.InstallPendingAtStartup(args, log))
+            {
+                return 0;
+            }
+
             return Run(options, paths, guard);
         }
         catch (Exception ex)
@@ -55,6 +67,19 @@ public static class Program
         {
             log.Information("{App} exiting", AppInfo.Name);
             Log.CloseAndFlush();
+        }
+    }
+
+    /// <summary>Uninstalling: Windows must not try to start a Grably that is gone at the next sign-in.</summary>
+    private static void RemoveStartup()
+    {
+        try
+        {
+            new StartupRegistration().Set(false, string.Empty);
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            // Uninstalling goes on; a Run entry pointing at a missing file does no harm beyond a failed start.
         }
     }
 

@@ -16,9 +16,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/capture.ps1  
 powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/editor.ps1      #   (see tests/E2E/README.md)
 powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/scrolling.ps1   #   scrolling capture and capture text
 powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/recording.ps1   #   a recording from hotkey to library
+powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/install.ps1     #   install, update from a local feed, uninstall
 python tools/brand/build_brand.py                                                  # regenerate assets/brand
 ./tools/bump-version.ps1 patch                                                     # bump <Version> in Directory.Build.props
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/fetch-ffmpeg.ps1         # download the pinned LGPL ffmpeg (before building, for recording)
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/ffmpeg/build.ps1         # build the minimal LGPL ffmpeg that ships (Docker) into src/Grably.App/ffmpeg
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/fetch-ffmpeg.ps1         #   or download a larger developer build (never packaged)
+powershell -NoProfile -ExecutionPolicy Bypass -File build/pack.ps1                 # Velopack installer and update packages in artifacts/releases
 grably-dev record --pattern --seconds 5 | record --monitor 0 | bench --monitor 1    # recording engine checks (ffprobe, colours, drops)
 grably-dev synctest --seconds 10 --pause | exclusion-test                          # audio/video sync (no sound played); chrome stays out of captures
 grably-dev effects-test [--keep]                                                   # highlight, click ring, caption and camera drawn into a recording
@@ -44,4 +47,4 @@ Set `GRABLY_HOME` to a scratch folder before running the app, DevCli or end-to-e
 - Library APIs move fast (WPF-UI 4.x, NAudio 3.x, Velopack, Vortice): check the package XML docs in `~/.nuget/packages` before using an API from memory.
 - The agent cannot see the screen: make features verifiable through DevCli commands, `--ui-snapshot` images, log lines, ffprobe output or extracted frames. List anything that still needs a human under "Manual checks" in the PR.
 - Never log keystrokes or capture content.
-- Recording uses only the bundled LGPL ffmpeg (`src/Grably.App/ffmpeg`, from `tools/fetch-ffmpeg.ps1`), never the one on PATH, and never libx264.
+- Recording uses only the bundled LGPL ffmpeg (`src/Grably.App/ffmpeg`), never the one on PATH, and never libx264. The shipped build has only the codecs, formats and filters listed in `tools/ffmpeg/build.sh`: anything new Grably asks of ffmpeg goes on those lists, and the checks run against that build.

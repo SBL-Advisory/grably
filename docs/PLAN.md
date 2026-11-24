@@ -15,8 +15,8 @@ Each milestone is one GitHub issue and one stacked PR (each branch starts from t
 - [x] M6 Recording engine, video only - issue #13, PR #14
 - [x] M7 Audio and recording UX - issue #15, PR #16
 - [x] M8 Cursor effects and webcam - issue #17, PR #18
-- [x] M9 Trim editor and export - issue #19
-- [ ] M10 Packaging, updates, release
+- [x] M9 Trim editor and export - issue #19, PR #20
+- [x] M10 Packaging, updates, release - issue #21
 - [ ] M11 Hardening pass
 
 ## Implementation notes
@@ -58,7 +58,7 @@ Decisions made while building, which take precedence over the plan text below:
 - **`Core/Imaging/ScrollStitcher`** compares rows on a band of columns without the scrollbar strip. Rows count as the same only when nearly every pixel matches: sampled columns made lines that differ in one digit ("Line 001", "Line 004") look identical, so sticky bands grew into the content and the capture stopped after one step (found in review; `ScrollStitcherTextTests` covers it with rendered text). A quick search on sampled columns proposes offsets, and full rows confirm them. A match tolerates up to 15 % differing rows (a hover highlight, a caret) and ignores single-colour rows, preferring the expected distance when repeating content allows several. Sticky headers and footers appear once.
 - **Scrolling capture endings:** the bottom of the page (no movement twice), Esc or Stop, the pointer leaving its resting spot, a held key, repeated mismatches (it steps back and halves the step first), or 30,000 px. Early endings are explained in a notification. The status panel sits outside the area and is excluded from capture (`SetWindowDisplayAffinity`).
 - **Known limit:** apps that scroll by fractional device pixels (browsers at 125 % scaling) re-render text slightly differently at each position. Such pages may stitch with mismatches, to be checked in the M11 hardening pass.
-- **ffmpeg** is the LGPL v3 shared build `n9.0.2-39-g7adfbe40dc` from the FFmpeg-Builds month-end release of 2026-10-31 (kept two years), pinned by URL and SHA256 in `tools/fetch-ffmpeg.ps1`. It is copied next to `Grably.exe`, `grably-dev` and the tests. `FfmpegLocator` uses it, an explicit override, or PATH only with `GRABLY_FFMPEG_ALLOW_PATH=1`.
+- **ffmpeg** (until M10) was the LGPL v3 shared build `n9.0.2-39-g7adfbe40dc` from the FFmpeg-Builds month-end release of 2026-10-31, pinned in `tools/fetch-ffmpeg.ps1`; that script stays for quick developer setups. Since M10 the shipped one is Grably's own minimal build (see "Minimal ffmpeg" below). Either is copied next to `Grably.exe`, `grably-dev` and the tests. `FfmpegLocator` uses it, an explicit override, or PATH only with `GRABLY_FFMPEG_ALLOW_PATH=1`.
 - **Encoders** are chosen by a real 5-frame encode at the output size (`EncoderProbe`), in the order NVENC, QSV, AMF, Media Foundation, then HEVC, then smaller sizes. OpenH264 was dropped from the plan's list: Cisco's patent licence covers only Cisco's own binaries, not one built into ffmpeg, and Media Foundation (part of Windows) is the licensed software fallback. On the development machine NVENC and AMF are listed but fail, and QSV wins. Quality options come from `ffmpeg -h encoder=...` (QSV `-global_quality`, Media Foundation quality mode, OpenH264 a bitrate from the pixel rate).
 - **Recording engine** (`Platform/Recording`):
   - Capture: Windows.Graphics.Capture copies each frame into its own texture.
@@ -67,7 +67,7 @@ Decisions made while building, which take precedence over the plan text below:
   - Writing: a buffer pool of about 128 MB feeds ffmpeg's stdin. Late frames are repeated (`FramePacer`), and when the encoder falls behind the newest frame is repeated instead of read back, so the duration always matches the clock.
   - Output: a Matroska intermediate in `sessions/{id}`, remuxed to MP4 with `+faststart`.
 - **COM and WinRT interop** for capture is in `WinRtInterop.cs`: function pointers on the COM vtables (IGraphicsCaptureItemInterop, IDirect3DDxgiInterfaceAccess) and a raw-pointer `CreateDirect3D11DeviceFromDXGIDevice` import. CsWin32's projection would hand back its own COM types where the device is a Vortice object.
-- **Blocker for M10 (release):** the FFmpeg-Builds LGPL package bundles about 40 libraries whose licences need notices and, for LGPL and MPL parts, source. Decide between a minimal custom LGPL build (preferred: only what Grably uses, about 155 MB smaller) and shipping every notice plus a source offer. `THIRD-PARTY-NOTICES.md` says so; nothing may be distributed before this is settled.
+- **Licensing of the shipped ffmpeg (settled in M10):** the FFmpeg-Builds package bundles about 40 libraries whose licences would need notices and, for LGPL and MPL parts, source. Grably ships its own minimal LGPL build instead (below).
 - **Recorder robustness:**
   - Stop never hangs: a writer stuck on a full pipe gets ffmpeg killed, and what was written stays playable.
   - Dispose joins the worker threads before freeing GPU objects.
@@ -137,6 +137,50 @@ Decisions made while building, which take precedence over the plan text below:
   - Exports go next to the recording as `..._edited.mp4` or `.gif` and join the library; GIFs are listed as GIF items.
   - Progress comes from `-progress pipe:1`. The file is written as `name.mp4.part` and renamed when complete, so a crash or sign-out never leaves a broken video under the real name. Cancelling, closing the window or quitting kills ffmpeg at once and removes the part; closing or quitting during an export asks first, and sign-out stops it without asking.
   - Checked with `grably-dev export`: exports of the test video and of a QSV test-pattern recording are the kept length to the millisecond, at full size and 720p, and GIFs decode. The test video is made through Matroska like a recording, and each part of an export starts on exactly the recording's frame at its cut, including cuts on frames 1, 31 and 277.
+
+- **Minimal ffmpeg** (`tools/ffmpeg/build.sh`, run in Docker by `tools/ffmpeg/build.ps1` and in the release workflow):
+  - The unmodified FFmpeg 9.0.2 release, cross-compiled with MinGW-w64 in a digest-pinned `ubuntu:24.04` image. Every source is pinned: SHA256 for tarballs, commits for git tags.
+  - Configured with `--disable-everything --disable-autodetect`, LGPL 2.1 or later. It enables only:
+    - the hardware and Media Foundation encoders
+    - AAC, MPEG-4 (test videos), PNG, BMP and GIF
+    - Matroska, MP4, GIF and image pipes
+    - the filters, lavfi sources and bitstream filters Grably uses
+  - Its extra libraries are permissive:
+    - zlib and libvpl, linked in statically
+    - nv-codec-headers 12.2 (NVIDIA drivers from 550; newer headers would need newer drivers) and AMF headers 1.5.2 (the minimum for ffmpeg 9)
+    - the MinGW runtime, linked statically, so only Windows system DLLs are imported. The script fails if anything else is.
+  - 14 MB instead of about 180 MB, so the installer went from 145 MB to 86 MB. Licences (including the MinGW-w64 runtime's) and `BUILD.txt` (versions, configure line) ship next to it.
+  - The build records its script's SHA256 (`BUILD-SCRIPT.sha256`). `build.ps1` reuses a build only while `build.sh` is unchanged, and `pack.ps1` refuses one made by another version of it.
+  - Anything new Grably asks of ffmpeg must be added to the lists in `build.sh`. Building it showed two gaps:
+    - the lavfi test sources need the `wrapped_avframe` decoder
+    - the `metadata` filter links against libavformat without declaring it, so `grably-dev synctest` now reads brightness from `showinfo` instead of `signalstats`
+  - All checks pass on it: encoders (QSV and Media Foundation here), `record --pattern` colours, `export --sample` with frame-exact cuts, GIF, `synctest` with a pause (within 1 ms), `effects-test`, the unit tests and the Trim snapshot.
+- **Packaging** (`build/pack.ps1`):
+  - A self-contained win-x64 publish, with LICENSE and the notices, packed by Velopack (`vpk` 1.2.161, a local dotnet tool).
+  - The package id `SBLAdvisory.Grably` installs to `%LocalAppData%\SBLAdvisory.Grably`, away from Grably's data folder, with a Start menu shortcut only. Uninstalling never touches the user's library.
+  - The script refuses the developer ffmpeg (`-AllowDevFfmpeg` only for local tries).
+- **Updates** (`App/Shell/UpdateService`):
+  - `VelopackApp.Build().Run()` runs first in `Main`. Its uninstall hook removes the start-with-Windows entry.
+  - Velopack's own install-at-startup is off. A downloaded update is installed only once the single-instance lock is held (`UpdateService.InstallPendingAtStartup`). Found in review: otherwise a second launch, which only hands its arguments to the running Grably, would swap the files under it mid-recording.
+  - Checks run 30 seconds after startup, then every 12 hours (30 minutes after a failure) while the setting is on, and on request from the tray and from Settings (About).
+  - A newer version downloads in the background. The tray item then becomes "Restart to update to X". It runs the usual exit questions (recording, unsaved editors, exports), then hands the update to Velopack's updater, which installs it and restarts Grably in the background. If the user doesn't restart, it installs at the next start. The "ready" balloon is never shown during a recording.
+  - `GRABLY_UPDATE_FEED` points updates at a folder or URL instead of GitHub Releases, for testing. Failures are logged and shown only when the user asked.
+- **Release** (`.github/workflows/release.yml`, on a `v*` tag matching `<Version>`):
+  - The ffmpeg job builds the minimal ffmpeg.
+  - The tag is checked against `<Version>` first.
+  - The Windows job:
+    - builds and tests
+    - runs the fresh ffmpeg through `grably-dev export --sample` as a GIF (MP4 too when the runner has an H.264 encoder)
+    - downloads the previous release for a delta (none for the first release)
+    - packs and uploads a draft release
+    - attaches the exact FFmpeg source tarball (LGPL) and only then publishes. A failed step stops it, and a re-run can finish a half-made release.
+  - `ffmpeg.yml` rebuilds ffmpeg and runs the same check on pull requests that change its build script.
+- **Checked with `tests/E2E/install.ps1`:**
+  - Setup installs 0.1.10, which starts, finds 0.1.1010 in a local feed and downloads it.
+  - Starting it again installs 0.1.1010 first.
+  - Uninstalling removes the app, the shortcut, its Installed apps entry and its start-with-Windows entry, and leaves the user's data. The script puts back a developer's own start-with-Windows entry.
+  - A silent Setup does not start the app; a normal one does.
+- **About** in Settings says Grably uses FFmpeg under the LGPL and has a Licenses button that opens the installed `THIRD-PARTY-NOTICES.md`.
 
 ## The plan
 
