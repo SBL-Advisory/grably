@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using Grably.Core;
 using Grably.Core.Settings;
 using Grably.Platform.Shell;
 using Wpf.Ui.Appearance;
@@ -7,11 +9,27 @@ using Wpf.Ui.Controls;
 
 namespace Grably.App.Shell;
 
-/// <summary>Applies the light/dark theme from settings (or Windows) and the Grably teal accent.</summary>
+/// <summary>Applies the light/dark theme from settings (or Windows) and the SBL colours (see assets/brand/README.md).</summary>
 public sealed class ThemeController(SettingsStore settings)
 {
-    /// <summary>Brand teal, see assets/brand/README.md.</summary>
-    public static readonly Color Accent = Color.FromRgb(0x0E, 0x9A, 0xA7);
+    /// <summary>SBL navy, the UI accent: buttons, toggles, selection. The dark theme uses lighter shades of it.</summary>
+    public static readonly Color Accent = Rgb(BrandColors.Navy);
+
+    // WPF-UI's four accent shades: SystemAccentColor, then Primary, Secondary and Tertiary. Buttons and toggles fill
+    // with Primary in the light theme and Secondary in the dark one, links use Secondary, and text on the accent turns
+    // dark when Secondary is bright. So the light theme fills with SBL navy itself (white text), and the dark theme
+    // with a light navy (black text; links 6.8:1 on #202020).
+    private static readonly Color[] LightAccents = [Accent, Accent, Rgb(0x1D3371), Rgb(0x172A5E)];
+    private static readonly Color[] DarkAccents = [Accent, Rgb(BrandColors.NavyMid), Rgb(0x8FA6E8), Rgb(0xB7C6F2)];
+
+    /// <summary>SBL orange, for marks drawn over screenshots and video: outlines, handles, the trim selection.</summary>
+    public static readonly Color Mark = Rgb(BrandColors.Orange);
+
+    /// <summary>Application resource holding the SBL logo for the current theme: white on dark, full colour on light.</summary>
+    public const string SblLogoKey = "SblLogo";
+
+    private static ImageSource? _sblLogoColor;
+    private static ImageSource? _sblLogoWhite;
 
     private bool _followSystem;
 
@@ -27,8 +45,8 @@ public sealed class ThemeController(SettingsStore settings)
         _followSystem = preference == AppTheme.System && overrideTheme is null;
         Apply(Resolve(preference));
 
-        // Theme switches (ours or Windows') rebuild the theme resources; put the brand accent back each time.
-        ApplicationThemeManager.Changed += (theme, _) => ApplyAccent(theme);
+        // Theme switches (ours or Windows') rebuild the theme resources; put the brand accent and logo back each time.
+        ApplicationThemeManager.Changed += (theme, _) => ApplyBrand(theme);
     }
 
     /// <summary>Open Fluent windows, so a new theme choice can start or stop following Windows in each.</summary>
@@ -79,9 +97,36 @@ public sealed class ThemeController(SettingsStore settings)
     private static void Apply(ApplicationTheme theme)
     {
         ApplicationThemeManager.Apply(theme, WindowBackdropType.Mica, updateAccent: false);
-        ApplyAccent(theme);
+        ApplyBrand(theme);
     }
 
-    private static void ApplyAccent(ApplicationTheme theme) =>
-        ApplicationAccentColorManager.Apply(Accent, theme, systemGlassColor: false, systemAccentColor: false);
+    private static void ApplyBrand(ApplicationTheme theme)
+    {
+        // This overload reads the theme from ApplicationThemeManager, which has switched by the time we get here.
+        var accents = theme == ApplicationTheme.Dark ? DarkAccents : LightAccents;
+        ApplicationAccentColorManager.Apply(accents[0], accents[1], accents[2], accents[3]);
+
+        // High contrast themes come with light or dark backgrounds; the logo follows the window colour there.
+        var darkBackground = theme == ApplicationTheme.Dark
+            || (theme == ApplicationTheme.HighContrast && IsDark(SystemColors.WindowColor));
+        Application.Current.Resources[SblLogoKey] = darkBackground
+            ? _sblLogoWhite ??= LoadSblLogo("sbl-logo-white.png")
+            : _sblLogoColor ??= LoadSblLogo("sbl-logo-color.png");
+    }
+
+    private static bool IsDark(Color c) => (0.2126 * c.R) + (0.7152 * c.G) + (0.0722 * c.B) < 128;
+
+    private static Color Rgb(int rgb) => Color.FromRgb((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb);
+
+    // Loaded on first use, not in a static initializer: pack URIs only work once the WPF Application exists.
+    private static BitmapImage LoadSblLogo(string file)
+    {
+        var image = new BitmapImage();
+        image.BeginInit();
+        image.UriSource = new Uri($"pack://application:,,,/Assets/Sbl/{file}");
+        image.CacheOption = BitmapCacheOption.OnLoad;
+        image.EndInit();
+        image.Freeze();
+        return image;
+    }
 }

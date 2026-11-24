@@ -22,8 +22,9 @@ public sealed class OverlaySurface : FrameworkElement
     private const int LoupeOffset = 24;   // screen pixels from the pointer
 
     private static readonly Brush Dim = Frozen(new SolidColorBrush(Color.FromArgb(0x78, 0, 0, 0)));
-    private static readonly Brush LabelBackground = Frozen(new SolidColorBrush(Color.FromArgb(0xE6, 0x16, 0x1A, 0x23)));
-    private static readonly Brush Accent = Frozen(new SolidColorBrush(ThemeController.Accent));
+    private static readonly Brush LabelBackground = Frozen(new SolidColorBrush(
+        Color.FromArgb(0xE6, ThemeController.Accent.R, ThemeController.Accent.G, ThemeController.Accent.B)));
+    private static readonly Brush Mark = Frozen(new SolidColorBrush(ThemeController.Mark));
     private static readonly Brush CrosshairBrush = Frozen(new SolidColorBrush(Color.FromArgb(0x70, 0xFF, 0xFF, 0xFF)));
     private static readonly Brush GridBrush = Frozen(new SolidColorBrush(Color.FromArgb(0x40, 0x80, 0x80, 0x80)));
     private static readonly Typeface LabelFont = new("Segoe UI");
@@ -125,7 +126,7 @@ public sealed class OverlaySurface : FrameworkElement
     private void DrawFrame(DrawingContext dc, PixelRect area, double s)
     {
         // Two screen pixels wide, drawn inside the area so it never covers what is outside.
-        var pen = new Pen(Accent, 2 / s);
+        var pen = new Pen(Mark, 2 / s);
         var r = ToLocal(area);
         r.Inflate(-1 / s, -1 / s);
         dc.DrawRectangle(null, pen, r);
@@ -135,7 +136,7 @@ public sealed class OverlaySurface : FrameworkElement
     {
         var r = ToLocal(area);
         var size = 8 / s;
-        var pen = new Pen(Accent, 1 / s);
+        var pen = new Pen(Mark, 1 / s);
         foreach (var x in new[] { r.Left, r.Left + (r.Width / 2), r.Right })
         {
             foreach (var y in new[] { r.Top, r.Top + (r.Height / 2), r.Bottom })
@@ -235,7 +236,7 @@ public sealed class OverlaySurface : FrameworkElement
             dc.DrawLine(gridPen, new Point(x, y + (i * cell)), new Point(x + side, y + (i * cell)));
         }
 
-        dc.DrawRectangle(null, new Pen(Accent, 2 / s), new Rect(x + (half * cell), y + (half * cell), cell, cell));
+        dc.DrawRectangle(null, new Pen(Mark, 2 / s), new Rect(x + (half * cell), y + (half * cell), cell, cell));
         dc.DrawText(info, new Point(x + ((side - info.Width) / 2), y + side + (4 / s)));
     }
 

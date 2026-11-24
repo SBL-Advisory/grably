@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Grably.App.Shell;
 using Grably.Core.Recording;
 
 namespace Grably.App.Trim;
@@ -20,13 +21,13 @@ public sealed class TrimTimeline : FrameworkElement
     private const double DragThreshold = 4;
     private const double TilesHigh = 0.62; // the thumbnails' share of the track, the rest is the sound wave
 
-    private static readonly Color Accent = Color.FromRgb(0x0E, 0x9A, 0xA7);
-    private static readonly Brush AccentBrush = Frozen(new SolidColorBrush(Accent));
-    private static readonly Brush SelectionBrush = Frozen(new SolidColorBrush(Color.FromArgb(0x55, Accent.R, Accent.G, Accent.B)));
+    private static readonly Color Mark = ThemeController.Mark;
+    private static readonly Brush MarkBrush = Frozen(new SolidColorBrush(Mark));
+    private static readonly Brush SelectionBrush = Frozen(new SolidColorBrush(Color.FromArgb(0x55, Mark.R, Mark.G, Mark.B)));
     private static readonly Brush RemovedBrush = Frozen(new SolidColorBrush(Color.FromArgb(0xC8, 0x10, 0x10, 0x10)));
     private static readonly Brush TrackBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x20, 0x20, 0x20)));
     private static readonly Pen RemovedHatch = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(0x50, 0xFF, 0xFF, 0xFF))), 1));
-    private static readonly Pen KeptPen = Frozen(new Pen(AccentBrush, 2));
+    private static readonly Pen KeptPen = Frozen(new Pen(MarkBrush, 2));
     private static readonly Pen GripPen = Frozen(new Pen(Brushes.White, 1.5));
     private static readonly Pen PlayheadPen = Frozen(new Pen(Brushes.White, 2));
     private static readonly Pen PlayheadShadow = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(0x90, 0, 0, 0))), 4));
@@ -278,7 +279,7 @@ public sealed class TrimTimeline : FrameworkElement
     private static void DrawHandle(DrawingContext dc, Rect track, double x, bool left)
     {
         var area = new Rect(left ? x - HandleWidth : x, track.Top, HandleWidth, track.Height);
-        dc.DrawRoundedRectangle(AccentBrush, null, area, 4, 4);
+        dc.DrawRoundedRectangle(MarkBrush, null, area, 4, 4);
         var middle = area.Left + (HandleWidth / 2);
         var top = track.Top + (track.Height / 2) - 8;
         dc.DrawLine(GripPen, new Point(middle - 2, top), new Point(middle - 2, top + 16));

@@ -378,10 +378,11 @@ internal static class RecordingCommands
         failures += Check(Math.Abs(Luma(centre) - Luma(plain)) < 20, $"the pointer itself is not tinted (#{centre:X6} in the middle)");
 
         var ring = ExtractFrame(ffmpeg, output, 1.2); // 0.2 s after the click: the ring is about 21 px out
+        // Orange, not the yellow highlight beside it: yellow over the dark strip has red only about 25 above green.
         var onRing = Enumerable.Range(0, 8)
             .Select(i => ring.GetRgb(cursor.X + (int)(21 * Math.Cos(i * Math.PI / 4)), cursor.Y + (int)(21 * Math.Sin(i * Math.PI / 4))))
-            .Count(rgb => (rgb & 0xFF) > ((rgb >> 16) & 0xFF) + 25 && ((rgb >> 8) & 0xFF) > ((rgb >> 16) & 0xFF) + 25);
-        failures += Check(onRing >= 4, $"click ring: {onRing} of 8 points on the circle are teal");
+            .Count(rgb => ((rgb >> 16) & 0xFF) > ((rgb >> 8) & 0xFF) + 50 && ((rgb >> 16) & 0xFF) > (rgb & 0xFF) + 50);
+        failures += Check(onRing >= 4, $"click ring: {onRing} of 8 points on the circle are orange");
 
         var inside = ring.GetRgb(webcam.X + (webcam.Width / 2), webcam.Y + (webcam.Height / 2));
         var corner = ring.GetRgb(webcam.X + 6, webcam.Y + 6);

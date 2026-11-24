@@ -1,7 +1,7 @@
 <Project>
   <!-- Shared build settings for every project in the repo. The version below is bumped by tools/bump-version.ps1. -->
   <PropertyGroup>
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
     <Product>Grably</Product>
     <Company>Grably</Company>
     <Authors>Grably contributors</Authors>

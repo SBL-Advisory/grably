@@ -94,6 +94,9 @@ public partial class SettingsWindow : FluentWindow
         }
     }
 
+    private void Credit_Click(object sender, RoutedEventArgs e) =>
+        Process.Start(new ProcessStartInfo(Core.AppInfo.CreditUrl) { UseShellExecute = true });
+
     private void OpenDataFolder_Click(object sender, RoutedEventArgs e) =>
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{_viewModel.DataFolder}\"") { UseShellExecute = true });
 
