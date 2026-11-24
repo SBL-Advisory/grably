@@ -17,6 +17,10 @@ public static class AppInfo
 
     /// <summary>The product version from Directory.Build.props, without the source-control suffix.</summary>
     public static string Version { get; } =
-        typeof(AppInfo).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-            .Split('+')[0] ?? "0.0.0";
+        typeof(AppInfo).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion is { } version
+            ? WithoutBuildMetadata(version)
+            : "0.0.0";
+
+    /// <summary>"1.0.1+3f2a9c" becomes "1.0.1": the source-control suffix means nothing to a user.</summary>
+    public static string WithoutBuildMetadata(string informationalVersion) => informationalVersion.Split('+')[0];
 }

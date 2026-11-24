@@ -53,6 +53,17 @@ public partial class App : Application
         Dispatcher.BeginInvoke(() => OpenRequested(options));
     }
 
+    /// <summary>
+    /// A different Grably.exe asks this one to close (see <see cref="RunningCopy"/>): the same questions as Exit, on
+    /// the UI thread. Called on a background thread.
+    /// </summary>
+    public Task<bool> OnCloseRequested(Platform.Shell.CloseRequest request) =>
+        Dispatcher.InvokeAsync(() => _services.GetRequiredService<AppCommands>().ConfirmCloseForAnotherCopyAsync(request))
+            .Task.Unwrap();
+
+    /// <summary>The other launch has its answer: quit so that it can start.</summary>
+    public void CloseForAnotherCopy() => Dispatcher.BeginInvoke(() => _services.GetRequiredService<AppCommands>().Quit());
+
     /// <summary>Opens the files a launch asked for, or the Library when there are none.</summary>
     private void OpenRequested(LaunchOptions options)
     {
@@ -84,6 +95,8 @@ public partial class App : Application
             }
 #endif
 
+            FollowStartupEntry();
+
             // Start remembering the user's foreground window before the tray menu can be used (needs the UI thread).
             _services.GetRequiredService<Platform.Capture.ForegroundWindowTracker>();
             _services.GetRequiredService<TrayIconController>().Show();
@@ -112,6 +125,56 @@ public partial class App : Application
             }
 
             Shutdown(1);
+        }
+    }
+
+    /// <summary>
+    /// When Grably starts with Windows but the entry names another Grably.exe (another build folder, a portable or
+    /// moved copy), a Release build points it at itself, so the copy the user last ran is the one that starts at
+    /// sign-in and takes later launches. A Debug build only logs it, so a development build never takes over an
+    /// installed Grably's sign-in.
+    /// </summary>
+    private void FollowStartupEntry()
+    {
+#if DEBUG
+        const bool rewrite = false;
+#else
+        const bool rewrite = true;
+#endif
+        var executable = Platform.Shell.ExecutableInfo.Current.Path;
+        if (executable.Length == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var (state, previous) = _services.GetRequiredService<Platform.Shell.StartupRegistration>().Follow(executable, rewrite);
+            if (state is not (Platform.Shell.StartupEntryState.Rewritten or Platform.Shell.StartupEntryState.OtherCopy) || previous is null)
+            {
+                return;
+            }
+
+            var before = Platform.Shell.ExecutableInfo.ForFile(previous);
+            var exists = System.IO.File.Exists(previous);
+            if (state == Platform.Shell.StartupEntryState.Rewritten)
+            {
+                _logger.LogInformation(
+                    "Start with Windows: the sign-in entry started {Previous} at {PreviousPath} (file exists: {Exists}); it now starts this copy, {Own} at {Path}",
+                    before.DisplayName, previous, exists, Platform.Shell.ExecutableInfo.Current.DisplayName, executable);
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Start with Windows: the sign-in entry starts {Previous} at {PreviousPath} (file exists: {Exists}), not this Debug build, {Own} at {Path}; left as it is",
+                    before.DisplayName, previous, exists, Platform.Shell.ExecutableInfo.Current.DisplayName, executable);
+            }
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or System.IO.IOException or System.Security.SecurityException
+            or ArgumentException)
+        {
+            // An optional step: an unreadable or malformed entry must never stop Grably from starting.
+            _logger.LogWarning(ex, "Could not check the start-with-Windows entry");
         }
     }
 

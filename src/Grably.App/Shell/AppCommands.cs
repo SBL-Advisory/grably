@@ -149,22 +149,8 @@ public sealed class AppCommands(
             return;
         }
 
-        if (!await services.GetRequiredService<Recording.RecordingController>().ConfirmExitAsync())
+        if (!await ConfirmQuitAsync())
         {
-            logger.LogInformation("Exit cancelled to keep the recording going");
-            return;
-        }
-
-        if (!await services.GetRequiredService<Trim.TrimService>().ConfirmExitAsync())
-        {
-            logger.LogInformation("Exit cancelled to finish an export");
-            return;
-        }
-
-        // Ask about unsaved editors first: during Shutdown, WPF ignores a window's request to stay open.
-        if (!services.GetRequiredService<Editor.EditorService>().ConfirmCloseAll())
-        {
-            logger.LogInformation("Exit cancelled to keep unsaved changes");
             return;
         }
 
@@ -175,6 +161,46 @@ public sealed class AppCommands(
             logger.LogWarning("Quitting without restarting; the update installs at the next start");
         }
 
-        Application.Current.Shutdown();
+        Quit();
+    }
+
+    /// <summary>
+    /// A different Grably.exe was started and the user chose to close this one for it: the same questions as Exit.
+    /// True when this Grably may quit (the caller answers the other launch, then calls <see cref="Quit"/>).
+    /// </summary>
+    public async Task<bool> ConfirmCloseForAnotherCopyAsync(Platform.Shell.CloseRequest request)
+    {
+        logger.LogInformation("Closing for Grably {Version} at {Executable} requested", request.Version, request.Executable);
+        var closing = await ConfirmQuitAsync();
+        logger.LogInformation(closing ? "Closing so the other Grably can start" : "Staying open; the other Grably will not start");
+        return closing;
+    }
+
+    /// <summary>Ends Grably at once; ask with <see cref="ConfirmQuitAsync"/> first.</summary>
+    public void Quit() => Application.Current.Shutdown();
+
+    /// <summary>The questions before quitting: a recording in progress, an export, unsaved editors. False to stay.</summary>
+    private async Task<bool> ConfirmQuitAsync()
+    {
+        if (!await services.GetRequiredService<Recording.RecordingController>().ConfirmExitAsync())
+        {
+            logger.LogInformation("Exit cancelled to keep the recording going");
+            return false;
+        }
+
+        if (!await services.GetRequiredService<Trim.TrimService>().ConfirmExitAsync())
+        {
+            logger.LogInformation("Exit cancelled to finish an export");
+            return false;
+        }
+
+        // Ask about unsaved editors first: during Shutdown, WPF ignores a window's request to stay open.
+        if (!services.GetRequiredService<Editor.EditorService>().ConfirmCloseAll())
+        {
+            logger.LogInformation("Exit cancelled to keep unsaved changes");
+            return false;
+        }
+
+        return true;
     }
 }

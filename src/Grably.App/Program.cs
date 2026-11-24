@@ -34,21 +34,14 @@ public static class Program
                 return Run(options, paths, guard: null);
             }
 
-            using var guard = SingleInstanceGuard.TryAcquire(AppInfo.Id);
+            // Another Grably may be running: hand over to it, or (a different Grably.exe, if the user agrees) close it
+            // and start this one instead.
+            var exitCode = 0;
+            using var guard = SingleInstanceGuard.TryAcquire(AppInfo.Id)
+                ?? Shell.RunningCopy.HandOverOrReplace(args, options, log, out exitCode);
             if (guard is null)
             {
-                log.Information("{App} is already running; forwarding this launch to it", AppInfo.Name);
-                if (SingleInstanceGuard.SendToPrimary(AppInfo.Id, ForwardedArguments(args), TimeSpan.FromSeconds(3)))
-                {
-                    return 0;
-                }
-
-                log.Warning("The running {App} did not answer", AppInfo.Name);
-                System.Windows.MessageBox.Show(
-                    "Grably is already running but did not respond. If it was started as administrator, open it from "
-                    + "its tray icon or close it before starting Grably again.",
-                    "Grably", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
-                return 1;
+                return exitCode;
             }
 
             if (Shell.UpdateService.InstallPendingAtStartup(args, log))
@@ -70,14 +63,18 @@ public static class Program
         }
     }
 
-    /// <summary>Uninstalling: Windows must not try to start a Grably that is gone at the next sign-in.</summary>
+    /// <summary>
+    /// Uninstalling: Windows must not try to start a Grably that is gone at the next sign-in. An entry for another copy
+    /// (a portable one the user now runs) is left alone.
+    /// </summary>
     private static void RemoveStartup()
     {
         try
         {
-            new StartupRegistration().Set(false, string.Empty);
+            new StartupRegistration().RemoveFor(ExecutableInfo.Current.Path);
         }
-        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.Security.SecurityException
+            or ArgumentException)
         {
             // Uninstalling goes on; a Run entry pointing at a missing file does no harm beyond a failed start.
         }
@@ -108,7 +105,9 @@ public static class Program
 
         var app = host.Services.GetRequiredService<App>();
         app.InitializeComponent();
-        guard?.Listen(app.OnLaunchedAgain, host.Services.GetRequiredService<ILogger<SingleInstanceGuard>>());
+        var guardLogger = host.Services.GetRequiredService<ILogger<SingleInstanceGuard>>();
+        guard?.Listen(app.OnLaunchedAgain, guardLogger);
+        guard?.ListenForCloseRequests(app.OnCloseRequested, app.CloseForAnotherCopy, guardLogger);
 
         var exitCode = app.Run();
 

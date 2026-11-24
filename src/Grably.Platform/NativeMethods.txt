@@ -19,7 +19,11 @@ SetCursorPos
 
 // Single instance: let the running instance bring its window to the front
 GetNamedPipeServerProcessId
+GetNamedPipeClientProcessId
 AllowSetForegroundWindow
+// Single instance: which Grably.exe the running instance is (also when it is another build)
+OpenProcess
+QueryFullProcessImageName
 
 // DPI and metrics
 GetDpiForSystem
