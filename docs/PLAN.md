@@ -16,8 +16,8 @@ Each milestone is one GitHub issue and one stacked PR (each branch starts from t
 - [x] M7 Audio and recording UX - issue #15, PR #16
 - [x] M8 Cursor effects and webcam - issue #17, PR #18
 - [x] M9 Trim editor and export - issue #19, PR #20
-- [x] M10 Packaging, updates, release - issue #21
-- [ ] M11 Hardening pass
+- [x] M10 Packaging, updates, release - issue #21, PR #22
+- [x] M11 Hardening pass - issue #24
 
 ## Implementation notes
 
@@ -181,6 +181,17 @@ Decisions made while building, which take precedence over the plan text below:
   - Uninstalling removes the app, the shortcut, its Installed apps entry and its start-with-Windows entry, and leaves the user's data. The script puts back a developer's own start-with-Windows entry.
   - A silent Setup does not start the app; a normal one does.
 - **About** in Settings says Grably uses FFmpeg under the LGPL and has a Licenses button that opens the installed `THIRD-PARTY-NOTICES.md`.
+
+- **Hardening (M11).** The manual checks of PRs #4 to #22 are collected in [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md), and what could be automated was. Two defects turned up and are fixed:
+  - **A closed window did not end its recording.** The recording ran on with its last picture until stopped by hand. Windows' capture-item Closed event did not arrive when the recording was started from a thread without a message loop. `ScreenCaptureSource` now also checks every 250 ms that the window still exists. `grably-dev window-test` records its own test window while it grows, is minimised, restored and closed: it ends 0.17 s after the close, keeps the minimised stretch, and shows the picture throughout.
+    - Found in review: a window closed while recording was still starting was reported before anyone listened. The controller now checks `IsSourceClosed` right after subscribing. A close after Stop or Discard no longer claims the recording was saved, and a listener failing on the timer thread can no longer crash Grably.
+  - **A crash a few seconds into a recording left an empty file.** The Matroska muxer kept up to five seconds (a cluster) in memory, and the start of the file in its write buffer. The recording now closes a cluster every second and flushes after every packet (`-cluster_time_limit 1000 -flush_packets 1`), so a crash loses about a second. `grably-dev recovery-test` kills a recording mid-way and saves it as the startup offer does: 3.2 of about 4 seconds come back.
+  - **OCR:** the self-test now reads dark-theme, small, dim and button text. White text on a blue button at 12 px loses punctuation ("0.1.5" as "O. 1.5"); 13 px and up is read correctly. Grey contrast-stretched input and 3x enlargement did not help (3x made it worse), so neither was kept.
+  - **Copy text** reads only the crop (`EditorService.TextSource`, unit-tested).
+  - **Library:** recordings show a play mark with their length, and GIFs show "GIF".
+  - **README:** screenshots rendered by Grably itself (`--ui-snapshot LibraryShowcase|Editor|Trim`, `tools/readme-images.ps1`), never from the screen.
+  - **Encoders above 4096 px:** on this Intel machine QSV H.264 fails, and Grably picks Media Foundation's software H.264 before hardware HEVC, as planned. Whether it keeps up on a real 5K monitor is on the checklist; `bench --pattern` cannot tell, because its own GPU work is the limit at that size.
+  - **Measured with a projector driver active:** recording was much slower (12 to 25 fps at 1920x1200) than in M6, with the old ffmpeg as well. This is on the checklist rather than changed.
 
 ## The plan
 

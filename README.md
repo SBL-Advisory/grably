@@ -11,6 +11,14 @@ Free, open-source screenshots, annotations and screen recordings for Windows 11.
 - **Record:** the screen with the PC's sound and your microphone, the webcam in a bubble, the pointer, clicks and shortcuts.
 - **Trim and share:** cut a recording down and export it as MP4 or GIF.
 
+<p align="center">
+  <img src="docs/images/library.png" alt="The Grably library: screenshots, a recording and a GIF, with search and filters" width="720">
+</p>
+
+| Annotate a screenshot | Trim a recording |
+|---|---|
+| <img src="docs/images/editor.png" alt="The annotation editor with a box, an arrow, a text callout, numbered steps, a highlight and a blurred area"> | <img src="docs/images/trim.png" alt="The trim editor with a thumbnail and sound wave timeline, two cuts, a selection and the export panel"> |
+
 Grably is in early development. The plan and progress are in [docs/PLAN.md](docs/PLAN.md).
 
 ## Install

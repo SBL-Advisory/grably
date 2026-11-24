@@ -44,6 +44,8 @@ internal static class Program
         ("synctest [--seconds S] [--pause]", "Test pattern with flashes and beeps at the same times: PASS if audio is within 80 ms of video."),
         ("exclusion-test", "Show two magenta squares excluded from capture; PASS if no screenshot or recording contains them."),
         ("effects-test [--keep]", "Test pattern with a scripted pointer, click, shortcut and a generated camera: PASS if each is in the video."),
+        ("recovery-test", "Kill a test-pattern recording mid-way, then save it as Grably does at startup: PASS if it plays."),
+        ("window-test [--keep]", "Record a test window while it grows, is minimised, restored and closed: PASS if all are handled."),
         ("export (video | --sample) --keep a-b,c-d [--format mp4|gif] [--height H] [--out f]",
             "Export kept ranges (seconds); PASS if the length is the kept total within one frame (a GIF must also decode)."),
     ];
@@ -79,6 +81,8 @@ internal static class Program
                 "exclusion-test" => RecordingCommands.ExclusionTest(args[1..]),
                 "effects-test" => RecordingCommands.EffectsTest(args[1..]),
                 "export" => ExportCommands.Export(args[1..]),
+                "window-test" => WindowTestCommands.WindowTest(args[1..]),
+                "recovery-test" => RecoveryCommands.RecoveryTest(args[1..]),
                 "project" when args.Length > 1 => DescribeProject(args[1]),
                 "library" => ListLibrary(OptionValue(args, "--search"), OptionValue(args, "--expect-file"), args.Contains("--editable")),
                 "version" => PrintVersion(),

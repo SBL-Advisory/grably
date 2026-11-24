@@ -11,9 +11,14 @@ public static class FfmpegArguments
         ["-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709"];
 
     /// <summary>
-    /// Encodes raw frames read from stdin at a constant frame rate into a Matroska file, which stays playable up to
-    /// the last frame written if Grably or the PC crashes. One keyframe per second keeps seeking in the trim editor fast.
+    /// Encodes raw frames read from stdin at a constant frame rate into a Matroska file, which stays playable if
+    /// Grably or the PC crashes. One keyframe per second keeps seeking in the trim editor fast.
     /// </summary>
+    /// <remarks>
+    /// The muxer otherwise holds up to five seconds (a cluster) in memory, and the file's start in its write buffer:
+    /// a crash a few seconds in left an empty file. Closing a cluster every second and flushing after every packet
+    /// keeps the loss to about a second.
+    /// </remarks>
     public static IReadOnlyList<string> Encode(
         VideoEncoder encoder, RawPixelFormat input, int width, int height, int fps, VideoQuality quality, string output)
     {
@@ -43,7 +48,7 @@ public static class FfmpegArguments
         args.AddRange(encoder.QualityOptions(width, height, fps, quality));
         args.AddRange(["-g", Number(fps), "-pix_fmt", encoder.PixelFormat]);
         args.AddRange(ColorTags);
-        args.AddRange(["-f", "matroska", "-y", output]);
+        args.AddRange(["-f", "matroska", "-cluster_time_limit", "1000", "-flush_packets", "1", "-y", output]);
         return args;
     }
 

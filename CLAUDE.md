@@ -10,7 +10,7 @@ dotnet test --solution Grably.slnx --filter-not-trait "Category=Desktop"        
 dotnet test --solution Grably.slnx --filter-trait "Category=Desktop"               # tests that need the real desktop
 src/Grably.App/bin/Debug/net10.0-windows10.0.26100.0/Grably.exe                    # run the app (starts in the tray)
 Grably.exe --background                                                            # start without opening the Library
-Grably.exe --ui-snapshot Library --out library.png [--theme light|dark]            # Debug builds: render a window to PNG (also LibraryEmpty, Settings, SettingsConflict, Editor, Trim, Overlay*)
+Grably.exe --ui-snapshot Library --out library.png [--theme light|dark]            # Debug builds: render a window to PNG (also LibraryShowcase, LibraryEmpty, Settings, SettingsConflict, Editor, Trim, Overlay*)
 tools/Grably.DevCli/bin/Debug/net10.0-windows10.0.26100.0/grably-dev.exe help      # dev harness commands
 powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/capture.ps1     # end-to-end checks on the real desktop
 powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/editor.ps1      #   (see tests/E2E/README.md)
@@ -26,9 +26,13 @@ grably-dev record --pattern --seconds 5 | record --monitor 0 | bench --monitor 1
 grably-dev synctest --seconds 10 --pause | exclusion-test                          # audio/video sync (no sound played); chrome stays out of captures
 grably-dev effects-test [--keep]                                                   # highlight, click ring, caption and camera drawn into a recording
 grably-dev export --sample --keep 1-3,5-8.5 [--format gif] [--height 720]          # trim export: length, sound, size and frame-exact cuts (or a video file)
+grably-dev window-test | recovery-test | ocr --selftest                            # a window resized, minimised and closed; a killed recording saved; OCR in five looks
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/readme-images.ps1         # re-render the README screenshots (docs/images) with --ui-snapshot
 ```
 
 Set `GRABLY_HOME` to a scratch folder before running the app, DevCli or end-to-end checks so settings, data and logs go there instead of the real profile. Logs: `<data>/logs/grably-YYYYMMDD.log`.
+
+What still needs a person or other hardware before a release is in [docs/RELEASE-CHECKLIST.md](docs/RELEASE-CHECKLIST.md); add to it whenever a PR lists manual checks.
 
 ## Layout
 

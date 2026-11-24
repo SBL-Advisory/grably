@@ -4,13 +4,15 @@ using Vortice.Mathematics;
 using Windows.Graphics;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX;
+using Windows.Win32;
+using Windows.Win32.Foundation;
 
 namespace Grably.Platform.Recording;
 
 /// <summary>
 /// Windows.Graphics.Capture of a monitor or window. Each arriving frame is copied into a texture this class owns
 /// and released at once (the pool has only two buffers). A window that is minimised sends no frames, so the last
-/// one stays; a resized window recreates the pool at the new size.
+/// one stays; a resized window recreates the pool at the new size. A closed window raises <see cref="Closed"/>.
 /// </summary>
 internal sealed class ScreenCaptureSource : IDisposable
 {
@@ -20,7 +22,11 @@ internal sealed class ScreenCaptureSource : IDisposable
     private readonly GraphicsCaptureItem _item;
     private readonly Direct3D11CaptureFramePool _pool;
     private readonly GraphicsCaptureSession _session;
+    private static readonly TimeSpan WindowCheckInterval = TimeSpan.FromMilliseconds(250);
+
     private SizeInt32 _poolSize;
+    private Timer? _windowCheck;
+    private int _closed;
     private ID3D11Texture2D? _latest; // guarded by _gpu.Lock
     private long _frames;
     private bool _disposed; // guarded by _gpu.Lock
@@ -29,7 +35,7 @@ internal sealed class ScreenCaptureSource : IDisposable
     {
         _gpu = gpu;
         _item = item;
-        _item.Closed += (_, _) => Closed?.Invoke(this, EventArgs.Empty);
+        _item.Closed += (_, _) => RaiseClosed();
         _poolSize = item.Size;
         _pool = Direct3D11CaptureFramePool.CreateFreeThreaded(gpu.WinRtDevice, PixelFormat, 2, _poolSize);
         _pool.FrameArrived += OnFrameArrived;
@@ -46,8 +52,22 @@ internal sealed class ScreenCaptureSource : IDisposable
         _session.IsCursorCaptureEnabled = true;
     }
 
-    /// <summary>The window being recorded was closed.</summary>
+    /// <summary>
+    /// The window being recorded was closed. Raised once, on a background thread, possibly before anyone listens (the
+    /// window closed while recording was starting): check <see cref="IsClosed"/> after subscribing.
+    /// </summary>
     public event EventHandler? Closed;
+
+    public bool IsClosed => Volatile.Read(ref _closed) == 1;
+
+    private void RaiseClosed()
+    {
+        if (Interlocked.Exchange(ref _closed, 1) == 0)
+        {
+            _windowCheck?.Dispose();
+            Closed?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     /// <summary>Frames delivered by Windows so far.</summary>
     public long Frames => Interlocked.Read(ref _frames);
@@ -70,6 +90,28 @@ internal sealed class ScreenCaptureSource : IDisposable
         var item = target.Kind == CaptureTargetKind.Window ? WinRtInterop.ForWindow(target.Handle) : WinRtInterop.ForMonitor(target.Handle);
         var source = new ScreenCaptureSource(gpu, item);
         source._session.StartCapture();
+        if (target.Kind == CaptureTargetKind.Window)
+        {
+            // The capture item's own Closed event does not always arrive (it was missed when the recording was started
+            // from a thread without a message loop), so the window is also checked for directly.
+            var window = new HWND(target.Handle);
+            source._windowCheck = new Timer(_ =>
+            {
+                try
+                {
+                    if (!PInvoke.IsWindow(window))
+                    {
+                        source.RaiseClosed();
+                    }
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    // A listener failing (the app closing at the same moment) must not take the process down from a
+                    // timer thread; the recording is stopped by whoever is closing it.
+                }
+            }, null, WindowCheckInterval, WindowCheckInterval);
+        }
+
         return source;
     }
 
@@ -87,6 +129,7 @@ internal sealed class ScreenCaptureSource : IDisposable
 
     public void Dispose()
     {
+        _windowCheck?.Dispose();
         lock (_gpu.Lock)
         {
             if (_disposed)

@@ -54,6 +54,7 @@ GetCursorPos
 // Windows
 EnumWindows
 IsWindowVisible
+IsWindow
 IsIconic
 GetWindowText
 GetWindowTextLength

@@ -10,6 +10,8 @@ public static class Converters
     /// <summary>Visible when the bound number is greater than zero.</summary>
     public static readonly IValueConverter PositiveToVisible = new Converter(v => v is int n && n > 0 ? Visibility.Visible : Visibility.Collapsed);
 
+    public static readonly IValueConverter NotNullToVisible = new Converter(v => v is null ? Visibility.Collapsed : Visibility.Visible);
+
     private sealed class Converter(Func<object?, object> convert) : IValueConverter
     {
         public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => convert(value);

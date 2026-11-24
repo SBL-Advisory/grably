@@ -183,6 +183,20 @@
                                     Visibility="{Binding IsEditable, Converter={StaticResource Visible}}">
                                     <ui:SymbolIcon Symbol="Edit16" FontSize="12" Foreground="White" />
                                 </Border>
+                                <!-- Recordings and GIFs: a play mark with the length, or GIF -->
+                                <Border
+                                    Margin="6"
+                                    Padding="5,2,7,2"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Bottom"
+                                    CornerRadius="4"
+                                    Background="#99000000"
+                                    Visibility="{Binding VideoBadge, Converter={x:Static vm:Converters.NotNullToVisible}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <ui:SymbolIcon Symbol="Play16" Filled="True" FontSize="11" Foreground="White" Margin="0,0,4,0" />
+                                        <TextBlock Text="{Binding VideoBadge}" FontSize="11" Foreground="White" />
+                                    </StackPanel>
+                                </Border>
                             </Grid>
                         </Border>
                         <TextBlock Margin="2,8,2,0" Text="{Binding Title}" TextTrimming="CharacterEllipsis" FontWeight="SemiBold" />

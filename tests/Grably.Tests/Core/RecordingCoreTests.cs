@@ -56,7 +56,7 @@ public class RecordingCoreTests
         Assert.DoesNotContain("-vf", args);
         AssertSequence(args, "-c:v", "h264_qsv");
         AssertSequence(args, "-g", "30"); // a keyframe every second
-        AssertSequence(args, "-f", "matroska", "-y", "out.mkv");
+        AssertSequence(args, "-f", "matroska", "-cluster_time_limit", "1000", "-flush_packets", "1", "-y", "out.mkv"); // a crash loses about a second
     }
 
     [Fact]

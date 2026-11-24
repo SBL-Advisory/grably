@@ -98,7 +98,7 @@ internal static class RecordingCommands
         return failures == 0 ? 0 : 1;
     }
 
-    /// <summary>bench [--monitor N | --pattern] [--seconds S] [--fps F] [--bgra]: can the engine keep up at this size?</summary>
+    /// <summary>bench [--monitor N | --pattern [--size WxH]] [--seconds S] [--fps F] [--bgra]: can the engine keep up at this size?</summary>
     public static int Bench(string[] args)
     {
         var seconds = double.Parse(OptionValue(args, "--seconds") ?? "10", CultureInfo.InvariantCulture);
@@ -421,6 +421,7 @@ internal static class RecordingCommands
         var options = new RecorderOptions
         {
             Target = Target(args),
+            PatternSize = OptionValue(args, "--size") is { } size ? ParseSize(size) : (1280, 720),
             FrameRate = fps,
             PreferNv12 = !args.Contains("--bgra"),
             Ffmpeg = ffmpeg,
@@ -482,12 +483,12 @@ internal static class RecordingCommands
             $"INFO {result.Session.Target}: {result.Session.Width}x{result.Session.Height} {result.Format} with {result.Session.Encoder}, "
             + $"{result.Frames} frames ({result.Composed} made, {result.Repeats} repeated late, {result.Dropped} dropped for the encoder, {result.DroppedAtStart} of them while starting)");
 
-    private sealed record ProbeResult(string Codec, int Width, int Height, double FrameRate, double Duration, long Frames, string PixelFormat, string ColorSpace)
+    internal sealed record ProbeResult(string Codec, int Width, int Height, double FrameRate, double Duration, long Frames, string PixelFormat, string ColorSpace)
     {
         public string? AudioCodec { get; init; }
     }
 
-    private static ProbeResult Probe(string ffmpeg, string video)
+    internal static ProbeResult Probe(string ffmpeg, string video)
     {
         var info = new ProcessStartInfo(FfmpegLocator.ProbeNextTo(ffmpeg)) { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
         foreach (var a in new[] { "-v", "error", "-select_streams", "v:0", "-count_packets", "-show_entries",
@@ -524,7 +525,7 @@ internal static class RecordingCommands
         };
     }
 
-    private static PixelBuffer ExtractFrame(string ffmpeg, string video, double seconds)
+    internal static PixelBuffer ExtractFrame(string ffmpeg, string video, double seconds)
     {
         var png = Path.Combine(Path.GetTempPath(), $"grably-frame-{Guid.NewGuid():N}.png");
         var (code, errors) = FfmpegProcess.RunAsync(ffmpeg, FfmpegArguments.ExtractFrame(video, seconds, png), TimeSpan.FromSeconds(30)).GetAwaiter().GetResult();
@@ -586,7 +587,7 @@ internal static class RecordingCommands
         Array.IndexOf(args, name) is var at and >= 0 && at + 1 < args.Length ? args[at + 1] : null;
 
     /// <summary>Prints the recorder's information and warnings as INFO and WARN lines.</summary>
-    private sealed class ConsoleLogger : ILogger
+    internal sealed class ConsoleLogger : ILogger
     {
         public IDisposable? BeginScope<TState>(TState state)
             where TState : notnull => null;

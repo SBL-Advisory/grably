@@ -18,6 +18,17 @@ public sealed partial class LibraryItemViewModel(LibraryItem item) : ObservableO
 
     public string Title => Item.Title;
 
+    /// <summary>For the badge on video tiles: "GIF", or the length of a recording ("2:14"); null for screenshots.</summary>
+    public string? VideoBadge => Item.Kind switch
+    {
+        LibraryItemKind.Gif => "GIF",
+        LibraryItemKind.Recording => Item.DurationMs is { } ms ? Length(TimeSpan.FromMilliseconds(ms)) : "Video",
+        _ => null,
+    };
+
+    private static string Length(TimeSpan duration) =>
+        duration.TotalHours >= 1 ? duration.ToString(@"h\:mm\:ss", CultureInfo.InvariantCulture) : duration.ToString(@"m\:ss", CultureInfo.InvariantCulture);
+
     /// <summary>The file (or, for a project-only item, the project) is gone. Set by <see cref="SetFileState"/>.</summary>
     [ObservableProperty]
     public partial bool IsMissing { get; private set; }

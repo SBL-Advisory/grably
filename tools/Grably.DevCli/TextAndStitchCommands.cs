@@ -18,7 +18,21 @@ internal static class TextAndStitchCommands
         "Small print still counts: version 0.1.5",
     ];
 
-    /// <summary>ocr &lt;image&gt; prints the text; ocr --selftest renders known text and checks it is read back.</summary>
+    /// <summary>The self-test's looks: a document, dark-theme text, small and dim UI text, and text on a coloured button.</summary>
+    private static readonly (string Name, double Size, Color Text, Color Background)[] SelfTestStyles =
+    [
+        ("black on white, 13 px", 13, Colors.Black, Colors.White),
+        ("light on a dark theme, 13 px", 13, Color.FromRgb(0xE6, 0xE6, 0xE6), Color.FromRgb(0x20, 0x20, 0x20)),
+        ("small UI text, 11 px", 11, Color.FromRgb(0x1B, 0x1B, 0x1B), Color.FromRgb(0xF3, 0xF3, 0xF3)),
+        ("dim text on a dark theme, 11 px", 11, Color.FromRgb(0x9A, 0x9A, 0x9A), Color.FromRgb(0x20, 0x20, 0x20)),
+        // At 12 px (button text at 100 % scaling) Windows OCR drops punctuation here: "0.1.5" reads as "O. 1.5".
+        ("white on a blue button, 13 px", 13, Colors.White, Color.FromRgb(0x00, 0x5F, 0xB8)),
+    ];
+
+    /// <summary>
+    /// ocr &lt;image&gt; prints the text; ocr --selftest renders known text in several looks (see
+    /// <see cref="SelfTestStyles"/>) and checks every word is read back.
+    /// </summary>
     public static int Ocr(string[] args)
     {
         var ocr = new OcrService();
@@ -30,22 +44,28 @@ internal static class TextAndStitchCommands
 
         if (args.Contains("--selftest"))
         {
-            var image = RenderText(SelfTestLines, fontSize: 13);
-            if (OptionValue(args, "--out") is { } saveTo)
+            var failures = 0;
+            var expected = SelfTestLines.SelectMany(l => l.Split(' ')).ToList();
+            foreach (var (name, size, text, background) in SelfTestStyles)
             {
-                PngWriter.Save(image, Path.GetFullPath(saveTo)); // a known text image for other checks
+                var image = RenderText(SelfTestLines, size, text, background);
+                if (name == SelfTestStyles[0].Name && OptionValue(args, "--out") is { } saveTo)
+                {
+                    PngWriter.Save(image, Path.GetFullPath(saveTo)); // a known text image for other checks
+                }
+
+                var outcome = ocr.RecognizeAsync(image).GetAwaiter().GetResult();
+                var found = outcome.Text.Split([' ', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal);
+                var missing = expected.Where(w => !found.Contains(w)).ToList();
+                var ok = missing.Count == 0 && outcome.Lines.Count == SelfTestLines.Length;
+                failures += ok ? 0 : 1;
+                Console.WriteLine(ok
+                    ? $"PASS {name}: all {expected.Count} words on {SelfTestLines.Length} lines ({outcome.Language})"
+                    : $"FAIL {name}: missed {missing.Count} word(s): {string.Join(", ", missing)}; read: {outcome.Text.ReplaceLineEndings(" / ")}");
             }
 
-            var outcome = ocr.RecognizeAsync(image).GetAwaiter().GetResult();
-            var expected = SelfTestLines.SelectMany(l => l.Split(' ')).ToList();
-            var found = outcome.Text.Split([' ', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal);
-            var missing = expected.Where(w => !found.Contains(w)).ToList();
-            Console.WriteLine($"INFO language {outcome.Language}, {outcome.Lines.Count} line(s) from a {image.Width}x{image.Height} image");
-            var ok = missing.Count == 0 && outcome.Lines.Count == SelfTestLines.Length;
-            Console.WriteLine(ok
-                ? $"PASS ocr read all {expected.Count} words on {SelfTestLines.Length} lines"
-                : $"FAIL ocr missed {missing.Count} word(s): {string.Join(", ", missing)} ({outcome.Lines.Count} line(s))");
-            return ok ? 0 : 1;
+            Console.WriteLine(failures == 0 ? $"PASS ocr read every word in all {SelfTestStyles.Length} looks" : $"FAIL ocr: {failures} look(s) not fully read");
+            return failures == 0 ? 0 : 1;
         }
 
         if (args.Length == 0)
@@ -121,19 +141,21 @@ internal static class TextAndStitchCommands
         return BitmapFrame.Create(stream, BitmapCreateOptions.None, BitmapCacheOption.OnLoad).ToPixelBuffer();
     }
 
-    /// <summary>Black text on white, like a document on screen at 100 % scaling.</summary>
-    private static PixelBuffer RenderText(IReadOnlyList<string> lines, double fontSize)
+    /// <summary>Text as it looks on screen at 100 % scaling, with ClearType-like grey edges.</summary>
+    private static PixelBuffer RenderText(IReadOnlyList<string> lines, double fontSize, Color textColor, Color backgroundColor)
     {
+        var foreground = new SolidColorBrush(textColor);
+        var background = new SolidColorBrush(backgroundColor);
         var typeface = new Typeface("Segoe UI");
         var visual = new DrawingVisual();
         const int width = 520;
         var height = (int)(lines.Count * fontSize * 2) + 24;
         using (var dc = visual.RenderOpen())
         {
-            dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, width, height));
+            dc.DrawRectangle(background, null, new Rect(0, 0, width, height));
             for (var i = 0; i < lines.Count; i++)
             {
-                var text = new FormattedText(lines[i], CultureInfo.InvariantCulture, FlowDirection.LeftToRight, typeface, fontSize, Brushes.Black, 1);
+                var text = new FormattedText(lines[i], CultureInfo.InvariantCulture, FlowDirection.LeftToRight, typeface, fontSize, foreground, 1);
                 dc.DrawText(text, new Point(12, 12 + (i * fontSize * 2)));
             }
         }
