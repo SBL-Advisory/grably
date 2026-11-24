@@ -19,7 +19,7 @@ Free, open-source screenshots, annotations and screen recordings for Windows 11.
 |---|---|
 | <img src="docs/images/editor.png" alt="The annotation editor with a box, an arrow, a text callout, numbered steps, a highlight and a blurred area"> | <img src="docs/images/trim.png" alt="The trim editor with a thumbnail and sound wave timeline, two cuts, a selection and the export panel"> |
 
-Grably is in early development. The plan and progress are in [docs/PLAN.md](docs/PLAN.md).
+Grably 1.0 is the first public release; see the [releases](https://github.com/SBL-Advisory/grably/releases) for what is new. How it was built is in [docs/PLAN.md](docs/PLAN.md).
 
 ## Install
 

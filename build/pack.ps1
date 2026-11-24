@@ -36,8 +36,8 @@ try {
         }
     }
 
-    $publish = 'artifacts\publish'
-    if (Test-Path $publish) { Remove-Item -Recurse -Force $publish }
+    # A fresh folder each time: a Grably started from an earlier publish keeps its files locked.
+    $publish = Join-Path ([IO.Path]::GetTempPath()) "grably-publish-$([guid]::NewGuid().ToString('N'))"
     Write-Output "Publishing Grably $Version (ffmpeg: $stamp)"
     dotnet publish 'src\Grably.App\Grably.App.csproj' -c Release -r win-x64 --self-contained -o $publish "-p:Version=$Version" -nologo -v q
     if ($LASTEXITCODE) { throw 'dotnet publish failed' }
@@ -52,11 +52,15 @@ try {
     if ($LASTEXITCODE) { throw 'dotnet tool restore failed' }
     # The package id names the install folder (%LocalAppData%\SBLAdvisory.Grably), apart from Grably's own data
     # folder (%LocalAppData%\Grably), so uninstalling never touches the user's library.
+    # docs/release-notes/<version>.md, when there is one, goes into the package and onto the GitHub release.
+    $notes = @()
+    if (Test-Path "docs\release-notes\$Version.md") { $notes = @('--releaseNotes', "docs\release-notes\$Version.md") }
     dotnet vpk pack --packId SBLAdvisory.Grably --packVersion $Version --packDir $publish --mainExe Grably.exe `
-        --packTitle Grably --packAuthors 'SBL Advisory' --icon 'assets\brand\grably.ico' --shortcuts StartMenuRoot --outputDir $Output
+        --packTitle Grably --packAuthors 'SBL Advisory' --icon 'assets\brand\grably.ico' --shortcuts StartMenuRoot --outputDir $Output @notes
     if ($LASTEXITCODE) { throw 'vpk pack failed' }
     Get-ChildItem $Output | Sort-Object Name | ForEach-Object { '{0,-48} {1,8:N1} MB' -f $_.Name, ($_.Length / 1MB) }
 }
 finally {
+    if ($publish -and (Test-Path $publish)) { Remove-Item -Recurse -Force $publish -ErrorAction SilentlyContinue }
     Pop-Location
 }
