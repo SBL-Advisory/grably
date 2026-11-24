@@ -201,11 +201,14 @@ public sealed class EditorService(
     }
 
     /// <summary>Copies the text of the original image inside the crop (annotations are not read).</summary>
-    public Task CopyTextAsync(EditorDocumentSource source, AnnotationDocument document)
+    public Task CopyTextAsync(EditorDocumentSource source, AnnotationDocument document) =>
+        services.GetRequiredService<Text.TextCaptureService>().CopyTextAsync(TextSource(source.Original, document), "Editor text copy");
+
+    /// <summary>What Copy text reads: the original screenshot within the crop, so text cropped away is never copied.</summary>
+    public static PixelBuffer TextSource(PixelBuffer original, AnnotationDocument document)
     {
         var area = document.ViewArea;
-        var image = area == new PixelRect(0, 0, source.Original.Width, source.Original.Height) ? source.Original : source.Original.Crop(area);
-        return services.GetRequiredService<Text.TextCaptureService>().CopyTextAsync(image, "Editor text copy");
+        return area == new PixelRect(0, 0, original.Width, original.Height) ? original : original.Crop(area);
     }
 
     public void CopyImage(EditorDocumentSource source, AnnotationDocument document)

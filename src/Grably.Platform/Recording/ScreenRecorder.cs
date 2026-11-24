@@ -153,15 +153,26 @@ public sealed class ScreenRecorder : IAsyncDisposable
 
         if (source is not null)
         {
-            source.Closed += (_, _) => SourceClosed?.Invoke(this, EventArgs.Empty);
+            source.Closed += (_, _) =>
+            {
+                if (!_stopping)
+                {
+                    SourceClosed?.Invoke(this, EventArgs.Empty);
+                }
+            };
         }
 
         _composeThread = new Thread(ComposeLoop) { Name = "Grably compositor", IsBackground = true, Priority = ThreadPriority.AboveNormal };
         _writeThread = new Thread(WriteLoop) { Name = "Grably encoder feed", IsBackground = true };
     }
 
-    /// <summary>The recorded window was closed; the caller should stop.</summary>
+    /// <summary>
+    /// The recorded window was closed; the caller should stop. A window closed while recording was starting has no
+    /// listener yet: check <see cref="IsSourceClosed"/> after subscribing.
+    /// </summary>
     public event EventHandler? SourceClosed;
+
+    public bool IsSourceClosed => _source?.IsClosed == true;
 
     /// <summary>
     /// Recording stopped by itself (ffmpeg exited, frames could not be made). Raised once, on a background thread;

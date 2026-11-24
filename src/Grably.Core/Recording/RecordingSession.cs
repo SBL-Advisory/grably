@@ -64,6 +64,30 @@ public sealed record RecordingSession
         File.Move(path + ".tmp", path, overwrite: true);
     }
 
+    /// <summary>
+    /// Sessions in <paramref name="sessionsFolder"/> that recorded video but were never saved as an MP4 (Grably or
+    /// Windows stopped mid-recording). Offered back at startup.
+    /// </summary>
+    public static IReadOnlyList<(RecordingSession Session, string Folder)> FindUnsaved(string sessionsFolder)
+    {
+        var found = new List<(RecordingSession, string)>();
+        if (!Directory.Exists(sessionsFolder))
+        {
+            return found;
+        }
+
+        foreach (var folder in Directory.GetDirectories(sessionsFolder))
+        {
+            var video = Path.Combine(folder, VideoFileName);
+            if (Load(folder) is { OutputPath: null } session && File.Exists(video) && new FileInfo(video).Length > 0)
+            {
+                found.Add((session, folder));
+            }
+        }
+
+        return found;
+    }
+
     public static RecordingSession? Load(string folder)
     {
         var path = Path.Combine(folder, FileName);

@@ -16,6 +16,7 @@ using Grably.Core.Capture;
 using Grably.Core.Geometry;
 using Grably.Core.Hotkeys;
 using Grably.Core.Imaging;
+using Grably.Core.Library;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -31,7 +32,7 @@ namespace Grably.App.Diagnostics;
 internal static class UiSnapshot
 {
     private const string Known =
-        "Library, LibraryEmpty, Settings, SettingsConflict, Editor, Trim, PreRecord, RecordingBar, OverlayHover, OverlayDrag, OverlayAdjust";
+        "Library, LibraryShowcase, LibraryEmpty, Settings, SettingsConflict, Editor, Trim, PreRecord, RecordingBar, OverlayHover, OverlayDrag, OverlayAdjust";
 
     /// <summary>Where recording windows are placed for snapshots: far off every screen.</summary>
     private static readonly PixelRect OffScreen = new(-30000, -30000, 1280, 720);
@@ -52,6 +53,7 @@ internal static class UiSnapshot
             bitmap = request.Window.ToLowerInvariant() switch
             {
                 "library" => RenderWindow(SampleLibrary(services, scratch, withItems: true)),
+                "libraryshowcase" => RenderWindow(SampleLibrary(services, scratch, withItems: true, showcase: true)),
                 "libraryempty" => RenderWindow(SampleLibrary(services, scratch, withItems: false)),
                 "settings" => RenderWindow(SampleSettings(services, conflict: false), height: 2900),
                 "settingsconflict" => RenderWindow(SampleSettings(services, conflict: true), height: 2900),
@@ -256,7 +258,8 @@ internal static class UiSnapshot
     }
 
     /// <summary>The Library over a throwaway library with a few screenshots: editable, plain and missing.</summary>
-    private static LibraryWindow SampleLibrary(IServiceProvider services, string folder, bool withItems)
+    /// <param name="showcase">For the README: no missing file, and a recording and a GIF among the screenshots.</param>
+    private static LibraryWindow SampleLibrary(IServiceProvider services, string folder, bool withItems, bool showcase = false)
     {
         var paths = new AppPaths(
             Path.Combine(folder, "roaming"), Path.Combine(folder, "local"), Path.Combine(folder, "Pictures"), Path.Combine(folder, "Videos"));
@@ -301,9 +304,25 @@ internal static class UiSnapshot
                     SourceApp = sample.App,
                     CreatedUtc = DateTime.UtcNow.AddHours(-sample.HoursAgo),
                 });
-                if (sample.Missing)
+                if (sample.Missing && !showcase)
                 {
                     File.Delete(file);
+                }
+            }
+
+            if (showcase)
+            {
+                Directory.CreateDirectory(paths.DefaultVideosFolder);
+                foreach (var (title, kind, seconds, hoursAgo) in new[]
+                         {
+                             ("Product demo", LibraryItemKind.Recording, 134.0, 1.5),
+                             ("Signup flow", LibraryItemKind.Gif, 9.0, 2.0),
+                         })
+                {
+                    var file = Path.Combine(paths.DefaultVideosFolder, title + (kind == LibraryItemKind.Gif ? ".gif" : ".mp4"));
+                    File.WriteAllBytes(file, []);
+                    var frame = SyntheticDesktop(new PixelRect(0, 0, 1280, 720), new PixelRect(200, 120, 880, 480)).ToBitmapSource();
+                    library.AddRecording(file, TimeSpan.FromSeconds(seconds), 1280, 720, frame, "chrome", title, DateTime.Now.AddHours(-hoursAgo), kind);
                 }
             }
         }

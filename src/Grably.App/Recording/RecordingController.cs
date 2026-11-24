@@ -109,7 +109,7 @@ public sealed class RecordingController(
     /// </summary>
     public async Task OfferRecoveryAsync()
     {
-        var unsaved = UnsavedSessions();
+        var unsaved = RecordingSession.FindUnsaved(paths.SessionsFolder);
         if (unsaved.Count == 0)
         {
             return;
@@ -249,14 +249,26 @@ public sealed class RecordingController(
                 notifications.Show(warning);
             }
 
-            _recorder.Warning += (_, message) => Application.Current.Dispatcher.BeginInvoke(() => notifications.Show(message));
+            _recorder.Warning += (_, message) => Application.Current?.Dispatcher.BeginInvoke(() => notifications.Show(message));
 
-            _recorder.SourceClosed += (_, _) => Application.Current.Dispatcher.BeginInvoke(async () =>
+            var recorder = _recorder;
+            void OnSourceClosed() => Application.Current?.Dispatcher.BeginInvoke(async () =>
             {
+                if (_recorder != recorder || _stopping)
+                {
+                    return; // already stopping (Stop or Discard came first): nothing was saved because of the close
+                }
+
                 notifications.Show("The window being recorded was closed, so the recording was saved.");
                 await StopAsync(save: true);
             });
-            _recorder.Failed += (_, error) => Application.Current.Dispatcher.BeginInvoke(async () =>
+            _recorder.SourceClosed += (_, _) => OnSourceClosed();
+            if (_recorder.IsSourceClosed)
+            {
+                OnSourceClosed(); // closed while recording was starting, before anyone listened
+            }
+
+            _recorder.Failed += (_, error) => Application.Current?.Dispatcher.BeginInvoke(async () =>
             {
                 notifications.Show("Recording stopped because of a problem; what was recorded is being saved.");
                 await StopAsync(save: true);
@@ -527,27 +539,6 @@ public sealed class RecordingController(
     {
         State = state;
         StateChanged?.Invoke(this, EventArgs.Empty);
-    }
-
-    /// <summary>Session folders with a video but no saved MP4 (the app or PC stopped mid-recording, or saving failed).</summary>
-    private List<(RecordingSession Session, string Folder)> UnsavedSessions()
-    {
-        var found = new List<(RecordingSession, string)>();
-        if (!Directory.Exists(paths.SessionsFolder))
-        {
-            return found;
-        }
-
-        foreach (var folder in Directory.GetDirectories(paths.SessionsFolder))
-        {
-            var video = Path.Combine(folder, RecordingSession.VideoFileName);
-            if (RecordingSession.Load(folder) is { OutputPath: null } session && File.Exists(video) && new FileInfo(video).Length > 0)
-            {
-                found.Add((session, folder));
-            }
-        }
-
-        return found;
     }
 
     /// <summary>The user chose Delete: the session's files go to the Recycle Bin, so the choice can be undone.</summary>
