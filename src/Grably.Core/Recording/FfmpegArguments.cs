@@ -189,7 +189,7 @@ public static class FfmpegArguments
     public static IReadOnlyList<string> Waveform(string video, int width, int height, string output) =>
     [
         "-hide_banner", "-loglevel", "error", "-i", video, "-frames:v", "1", "-vn",
-        "-filter_complex", $"aformat=channel_layouts=mono,showwavespic=s={width}x{height}:colors=0x0E9AA7:scale=sqrt", "-y", output,
+        "-filter_complex", $"aformat=channel_layouts=mono,showwavespic=s={width}x{height}:colors=0x{BrandColors.Orange:X6}:scale=sqrt", "-y", output,
     ];
 
     /// <summary>

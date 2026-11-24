@@ -7,6 +7,8 @@
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:vm="clr-namespace:Grably.App.ViewModels"
     xmlns:views="clr-namespace:Grably.App.Views"
+    xmlns:core="clr-namespace:Grably.Core;assembly=Grably.Core"
+    xmlns:shell="clr-namespace:Grably.App.Shell"
     mc:Ignorable="d"
     d:DataContext="{d:DesignInstance vm:SettingsViewModel}"
     Title="Grably settings"
@@ -35,6 +37,44 @@
             <Setter Property="MinWidth" Value="220" />
             <Setter Property="DisplayMemberPath" Value="Label" />
             <Setter Property="SelectedValuePath" Value="Value" />
+        </Style>
+        <!-- The "Built By" credit: a quiet link that comes to full strength on hover and keyboard focus. Only the
+             logo is dimmed at rest; the text keeps the secondary text colour, which passes contrast in both themes. -->
+        <Style x:Key="Credit" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="FocusVisualStyle" Value="{DynamicResource DefaultControlFocusVisualStyle}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Padding="{TemplateBinding Padding}" Background="Transparent" CornerRadius="4">
+                            <ContentPresenter />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="CreditText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Button}}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsKeyboardFocused, RelativeSource={RelativeSource AncestorType=Button}}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="CreditLogo" TargetType="Image">
+            <Setter Property="Opacity" Value="0.75" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Button}}" Value="True">
+                    <Setter Property="Opacity" Value="1" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsKeyboardFocused, RelativeSource={RelativeSource AncestorType=Button}}" Value="True">
+                    <Setter Property="Opacity" Value="1" />
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
     </ui:FluentWindow.Resources>
 
@@ -237,6 +277,32 @@
                         <ui:Button Content="Open data folder" Click="OpenDataFolder_Click" />
                     </StackPanel>
                 </ui:CardControl>
+
+                <!-- Credit: the logo follows the theme through ThemeController.SblLogoKey (white on dark, colour on light). -->
+                <Button
+                    Style="{StaticResource Credit}"
+                    Margin="-2,12,0,0"
+                    HorizontalAlignment="Left"
+                    Click="Credit_Click"
+                    ToolTip="{x:Static core:AppInfo.CreditUrl}"
+                    AutomationProperties.Name="{Binding Source={x:Static core:AppInfo.CreditName}, StringFormat='Built By {0}'}"
+                    AutomationProperties.HelpText="{x:Static core:AppInfo.CreditUrl}">
+                    <WrapPanel>
+                        <TextBlock
+                            Style="{StaticResource CreditText}"
+                            Margin="0,0,8,0"
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            Text="Built By" />
+                        <Image
+                            Style="{StaticResource CreditLogo}"
+                            Height="22"
+                            VerticalAlignment="Center"
+                            Source="{DynamicResource {x:Static shell:ThemeController.SblLogoKey}}"
+                            RenderOptions.BitmapScalingMode="HighQuality"
+                            AutomationProperties.Name="{x:Static core:AppInfo.CreditName}" />
+                    </WrapPanel>
+                </Button>
             </StackPanel>
         </ScrollViewer>
 

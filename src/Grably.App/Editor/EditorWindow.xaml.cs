@@ -164,7 +164,7 @@ public partial class EditorWindow : FluentWindow, IUnsavedWork
             Foreground = new SolidColorBrush(Color.FromRgb(stroke.R, stroke.G, stroke.B)),
             Background = item.Background is { } bg ? new SolidColorBrush(Color.FromArgb(bg.A, bg.R, bg.G, bg.B)) : Brushes.Transparent,
             CaretBrush = new SolidColorBrush(Color.FromRgb(stroke.R, stroke.G, stroke.B)),
-            BorderBrush = new SolidColorBrush(ThemeController.Accent),
+            BorderBrush = new SolidColorBrush(ThemeController.Mark),
             BorderThickness = new Thickness(1),
             Padding = new Thickness(0),
             AcceptsReturn = true,

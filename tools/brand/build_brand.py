@@ -31,8 +31,8 @@ REPO = Path(__file__).resolve().parents[2]
 
 # --------------------------------------------------------------------------------------------- palette
 
-INK = "#161A23"        # frame and wordmark on light backgrounds
-TEAL = "#0E9AA7"       # brand accent: the lifted piece; 3.4:1 on white, 4.8:1 on #202020
+NAVY = "#243E8A"       # SBL navy: frame and wordmark on light backgrounds, app tile, banner; 9.9:1 on white
+ORANGE = "#F38120"     # SBL orange: the lifted piece; 6.2:1 on #202020, 3.7:1 on navy, 2.6:1 on white
 RED = "#E5383B"        # recording state only, never decoration
 WHITE = "#FFFFFF"
 TASKBAR_LIGHT = "#F3F3F3"
@@ -256,21 +256,21 @@ def lockup(frame_fill: str, piece_fill: str, word_fill: str, title: str | None =
 
 
 def app_icon(small: bool = False) -> str:
-    """App icon: teal tile with the white mark. Tiles keep the icon visible on light and dark taskbars."""
+    """App icon: navy tile, white frame, orange piece. Tiles keep the icon visible on light and dark taskbars."""
     if small:
         tile = rounded_rect(0, 0, 256, 256, 48)
-        mark = path(FRAME_APP_SMALL, WHITE) + path(PIECE_APP_SMALL, WHITE)
+        mark = path(FRAME_APP_SMALL, WHITE) + path(PIECE_APP_SMALL, ORANGE)
     else:
         tile = rounded_rect(12, 12, 232, 232, 56)
         s = 0.66
-        mark = symbol_body(WHITE, WHITE, s=s, dx=128 * (1 - s), dy=128 * (1 - s))
-    return svg(256, 256, path(tile, TEAL) + mark, "Grably app icon")
+        mark = symbol_body(WHITE, ORANGE, s=s, dx=128 * (1 - s), dy=128 * (1 - s))
+    return svg(256, 256, path(tile, NAVY) + mark, "Grably app icon")
 
 
 def tray(theme: str, recording: bool, small: bool) -> str:
-    """Tray glyph: theme-coloured frame, teal piece when idle, red dot when recording."""
-    frame_fill = INK if theme == "light" else WHITE
-    piece_fill = RED if recording else TEAL
+    """Tray glyph: theme-coloured frame, orange piece when idle, red dot when recording."""
+    frame_fill = NAVY if theme == "light" else WHITE
+    piece_fill = RED if recording else ORANGE
     title = "Grably (recording)" if recording else "Grably"
     return svg(256, 256, symbol_body(frame_fill, piece_fill, small=small, recording=recording), title)
 
@@ -371,16 +371,16 @@ def build(out: Path) -> dict[str, Image.Image]:
     (out / "tray").mkdir(exist_ok=True)
     files: dict[str, str] = {}
 
-    files["grably-symbol.svg"] = svg(256, 256, symbol_body(INK, TEAL), "Grably")
+    files["grably-symbol.svg"] = svg(256, 256, symbol_body(NAVY, ORANGE), "Grably")
     files["grably-symbol-black.svg"] = svg(256, 256, symbol_body("#000000", "#000000"), "Grably")
     files["grably-symbol-white.svg"] = svg(256, 256, symbol_body(WHITE, WHITE), "Grably")
-    files["grably-symbol-on-dark.svg"] = svg(256, 256, symbol_body(WHITE, TEAL), "Grably")
-    files["grably-symbol-small.svg"] = svg(256, 256, symbol_body(INK, TEAL, small=True), "Grably")
-    files["grably-symbol-recording.svg"] = svg(256, 256, symbol_body(INK, RED, recording=True), "Grably recording")
+    files["grably-symbol-on-dark.svg"] = svg(256, 256, symbol_body(WHITE, ORANGE), "Grably")
+    files["grably-symbol-small.svg"] = svg(256, 256, symbol_body(NAVY, ORANGE, small=True), "Grably")
+    files["grably-symbol-recording.svg"] = svg(256, 256, symbol_body(NAVY, RED, recording=True), "Grably recording")
     files["grably-wordmark.svg"] = svg(WORD_W, WORD_BOTTOM - WORD_TOP,
-                                       wordmark_body(INK, dy=-WORD_TOP), "Grably")
-    lockups = {"": (INK, TEAL, INK), "-black": ("#000000", "#000000", "#000000"),
-               "-white": (WHITE, WHITE, WHITE), "-on-dark": (WHITE, TEAL, WHITE)}
+                                       wordmark_body(NAVY, dy=-WORD_TOP), "Grably")
+    lockups = {"": (NAVY, ORANGE, NAVY), "-black": ("#000000", "#000000", "#000000"),
+               "-white": (WHITE, WHITE, WHITE), "-on-dark": (WHITE, ORANGE, WHITE)}
     lockup_size = (0.0, 0.0)
     for suffix, (f, p, w) in lockups.items():
         text, lw, lh = lockup(f, p, w, "Grably")
@@ -396,16 +396,16 @@ def build(out: Path) -> dict[str, Image.Image]:
     for name, text in files.items():
         (out / name).write_text(text, encoding="utf-8")
 
-    # Banner for the README: on-dark lockup over the ink colour, tagline underneath.
+    # Banner for the README: on-dark lockup over SBL navy, tagline underneath.
     lw, lh = lockup_size
     bw, bh = 1280, 400
     scale = 132 / lh
     ly = 108
-    lock_body, _, lock_h = lockup_body(WHITE, TEAL, WHITE, s=scale, dx=(bw - lw * scale) / 2, dy=ly)
+    lock_body, _, lock_h = lockup_body(WHITE, ORANGE, WHITE, s=scale, dx=(bw - lw * scale) / 2, dy=ly)
     banner = svg(bw, bh, (
-        f'<rect width="{bw}" height="{bh}" fill="{INK}"/>{lock_body}'
+        f'<rect width="{bw}" height="{bh}" fill="{NAVY}"/>{lock_body}'
         f'<text x="{bw / 2}" y="{num(ly + lock_h + 64)}" text-anchor="middle" '
-        'font-family="Segoe UI Variable Text, Segoe UI, sans-serif" font-size="28" fill="#AEB4C2">'
+        'font-family="Segoe UI Variable Text, Segoe UI, sans-serif" font-size="28" fill="#C9D3F0">'
         "Screenshots, annotations and screen recordings for Windows 11</text>"))
 
     png_jobs = [Job(files["grably-symbol.svg"], 512, 512, "grably-symbol-512.png"),

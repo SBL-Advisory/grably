@@ -20,6 +20,8 @@ These scripts click and type, so nobody may use the PC while they run. See [test
   - click the icon and every menu item
   - switch the taskbar between light and dark
   - start Grably twice: the Library comes to the front (#4)
+  - the SBL-coloured icons: the orange idle piece and the red recording dot are easy to tell apart at 100 % and 150 % scaling, on both taskbars (#28)
+  - the navy app icon stands out on a dark taskbar, in Alt+Tab and in the Start menu: navy itself is only 1.65:1 on #202020, so the white frame and orange piece carry it (#28)
 - [ ] **Capture:**
   - region, window and full screen on each monitor
   - the loupe and handles
@@ -36,6 +38,8 @@ These scripts click and type, so nobody may use the PC while they run. See [test
   - record PrintScreen and Alt+PrintScreen in a shortcut box, Save, and press them
   - Start with Windows shows in Task Manager's Startup apps, then turn it off
   - switch the theme with the Library and an editor open (#10)
+  - the "Built By" SBL logo switches with the theme (also when following Windows), Tab reaches it with a visible focus ring, and Enter or a click opens sbladvisory.com in the browser (#28)
+  - Narrator reads the credit as "Built By Strategies Beyond Limits" (#28)
 - [ ] **Scrolling capture** of a browser page, a chat and a code editor, also at 125 % scaling. This is a known limit: pages that scroll by fractional pixels may stitch with mismatches (#12).
 - [ ] **Recovery:** kill Grably mid-recording, start it again, and try the Save / Delete / Later prompt (#16). Saving a killed recording is automated: `grably-dev recovery-test`.
 - [ ] **Effects:**

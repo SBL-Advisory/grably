@@ -20,7 +20,7 @@ public sealed class EditorCanvas : FrameworkElement
     private const double PickToleranceDip = 5;
 
     private static readonly Brush CropDim = Frozen(new SolidColorBrush(Color.FromArgb(0x99, 0, 0, 0)));
-    private static readonly Brush Accent = Frozen(new SolidColorBrush(ThemeController.Accent));
+    private static readonly Brush Mark = Frozen(new SolidColorBrush(ThemeController.Mark));
 
     private readonly AnnotationEditor _editor;
     private readonly BitmapSource _image;
@@ -167,7 +167,7 @@ public sealed class EditorCanvas : FrameworkElement
         if (handles.Count == 0 || item is LineItem)
         {
             // Items without box handles get a dashed outline so the selection is visible.
-            var pen = new Pen(Accent, 1.5 / s) { DashStyle = new DashStyle([3, 3], 0) };
+            var pen = new Pen(Mark, 1.5 / s) { DashStyle = new DashStyle([3, 3], 0) };
             if (item is not LineItem)
             {
                 var b = item.Bounds.Inflate(3 / s);
@@ -176,7 +176,7 @@ public sealed class EditorCanvas : FrameworkElement
         }
 
         var size = HandleSizeDip / s;
-        var outline = new Pen(Accent, 1.5 / s);
+        var outline = new Pen(Mark, 1.5 / s);
         foreach (var (_, p) in handles)
         {
             dc.DrawRectangle(Brushes.White, outline, new Rect(p.X - (size / 2), p.Y - (size / 2), size, size));
@@ -196,7 +196,7 @@ public sealed class EditorCanvas : FrameworkElement
         dc.DrawRectangle(null, new Pen(Brushes.White, 2 / s), hole);
 
         var size = HandleSizeDip * 1.2 / s;
-        var outline = new Pen(Accent, 1.5 / s);
+        var outline = new Pen(Mark, 1.5 / s);
         foreach (var (_, p) in AnnotationGeometry.Handles(new RectangleItem { Rect = new RectD(crop.X, crop.Y, crop.Width, crop.Height) }))
         {
             dc.DrawRectangle(Brushes.White, outline, new Rect(p.X - (size / 2), p.Y - (size / 2), size, size));

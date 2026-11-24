@@ -1,4 +1,5 @@
 using System.Numerics;
+using Grably.Core;
 using Grably.Core.Geometry;
 using Grably.Core.Recording;
 using Grably.Core.Settings;
@@ -39,8 +40,10 @@ public sealed record OverlayState
 internal sealed class OverlayRenderer(ID2D1Factory1 factory) : IDisposable
 {
     public static readonly Color4 HighlightColor = new(1f, 0.83f, 0f, 0.6f);
-    public static readonly Color4 LeftClickColor = new(0x0E / 255f, 0x9A / 255f, 0xA7 / 255f, 1f);
-    public static readonly Color4 RightClickColor = new(0xE5 / 255f, 0x38 / 255f, 0x3B / 255f, 1f);
+    // SBL orange for left clicks; a mid SBL navy for right clicks, which shows on dark content and stays clear of
+    // the red that means "recording".
+    public static readonly Color4 LeftClickColor = Opaque(BrandColors.Orange);
+    public static readonly Color4 RightClickColor = Opaque(BrandColors.NavyMid);
 
     private readonly IDWriteFactory _write = DWrite.DWriteCreateFactory<IDWriteFactory>();
     private IDWriteTextFormat? _captionFormat;
@@ -164,4 +167,6 @@ internal sealed class OverlayRenderer(ID2D1Factory1 factory) : IDisposable
         dc.FillRoundedRectangle(new RoundedRectangle(new System.Drawing.RectangleF(x, y, width, height), height / 2, height / 2), background);
         dc.DrawTextLayout(new Vector2(x + padX, y + padY), layout, text);
     }
+
+    private static Color4 Opaque(int rgb) => new(((rgb >> 16) & 0xFF) / 255f, ((rgb >> 8) & 0xFF) / 255f, (rgb & 0xFF) / 255f, 1f);
 }

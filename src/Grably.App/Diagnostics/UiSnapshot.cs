@@ -376,7 +376,7 @@ internal static class UiSnapshot
         for (var i = 0; i < 9; i++)
         {
             image.SetRgb(700 + i, 420, 0xE5383B);
-            image.SetRgb(700, 420 + i, 0x0E9AA7);
+            image.SetRgb(700, 420 + i, 0x243E8A);
         }
 
         return image;
