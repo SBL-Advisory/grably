@@ -17,6 +17,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/editor.ps1   
 powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/scrolling.ps1   #   scrolling capture and capture text
 powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/recording.ps1   #   a recording from hotkey to library
 powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/install.ps1     #   install, update from a local feed, uninstall
+powershell -NoProfile -ExecutionPolicy Bypass -STA -File tests/E2E/second-copy.ps1 #   a different Grably.exe while one runs: ask, hand over, replace
 python tools/brand/build_brand.py                                                  # regenerate assets/brand
 ./tools/bump-version.ps1 patch                                                     # bump <Version> in Directory.Build.props
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/ffmpeg/build.ps1         # build the minimal LGPL ffmpeg that ships (Docker) into src/Grably.App/ffmpeg

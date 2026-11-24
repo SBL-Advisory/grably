@@ -13,6 +13,7 @@ These scripts click and type, so nobody may use the PC while they run. See [test
 - [ ] `tests/E2E/scrolling.ps1`: a 400-line Notepad file, capture text (#12)
 - [ ] `tests/E2E/recording.ps1`: hotkey to library and the trim editor, with sound (#16, #20)
 - [ ] `tests/E2E/install.ps1`: install, update from a local feed, second launch, uninstall (#22)
+- [ ] `tests/E2E/second-copy.ps1`: a different Grably.exe asks first, No hands over, Yes replaces the running copy; the same exe and `--background` hand over without asking (#31)
 
 ## 2. By hand
 
@@ -54,6 +55,12 @@ These scripts click and type, so nobody may use the PC while they run. See [test
   - closing the window or quitting during an export asks
   - "Edit this frame" (#20)
 - [ ] **Updates:** "Restart to update" from the tray, also during a recording (it must ask first) (#22)
+- [ ] **Another copy of Grably** (#31):
+  - with an installed Grably running, start a portable copy: the dialog is readable and names both copies' versions and folders
+  - choose Yes while the running copy has an unsaved editor: its save prompt comes to the front; Cancel there gives "stayed open" and only the old copy runs; Yes there starts the new copy
+  - choose Yes during a recording: the running copy asks, saves the recording, then the new copy starts
+  - with 1.0.1 running, start this version: the dialog explains how to quit the old copy from its tray icon, and Yes opens the old copy
+- [ ] **Start with Windows after switching copies** (#31): turn it on in one Release copy, run another Release copy from a different folder, sign out and in: the copy run last starts, and its log names the rewritten entry
 - [ ] **Installer:** a normal (not silent) Setup.exe shows the SmartScreen prompt, then Grably opens its Library (#22)
 
 ## 3. Hardware this machine lacks

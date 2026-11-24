@@ -183,7 +183,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         {
             // Only touch the Run key when the choice changed, so saving from a development build never repoints
             // an installed Grably's entry at itself.
-            if (Draft.General.StartWithWindows != _startedWithWindows && Environment.ProcessPath is { } exe)
+            // The path is spelled as the startup check and a second launch read it (ExecutableInfo.Current).
+            if (Draft.General.StartWithWindows != _startedWithWindows && ExecutableInfo.Current.Path is { Length: > 0 } exe)
             {
                 _startup.Set(Draft.General.StartWithWindows, exe);
                 _startedWithWindows = Draft.General.StartWithWindows;
