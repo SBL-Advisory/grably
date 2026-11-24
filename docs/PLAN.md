@@ -19,6 +19,7 @@ Each milestone is one GitHub issue and one stacked PR (each branch starts from t
 - [x] M10 Packaging, updates, release - issue #21, PR #22
 - [x] M11 Hardening pass - issue #24, PR #25
 - [x] Release 1.0.0 - issue #26 (release notes in `docs/release-notes/`, tag `v1.0.0`)
+- [x] Release 1.0.2 - issue #32 (SBL colours and credit #28, another copy of Grably #30; tag `v1.0.2`)
 
 ## Implementation notes
 
