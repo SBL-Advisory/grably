@@ -136,14 +136,18 @@ public sealed class LibraryService(AppPaths paths, ILogger<LibraryService> logge
         return item with { Id = Repository.Add(item) };
     });
 
-    /// <summary>Records a finished screen recording, with a thumbnail made from one of its frames.</summary>
+    /// <summary>
+    /// Records a finished screen recording or an export of one (<paramref name="kind"/> Gif for a GIF), with a
+    /// thumbnail made from one of its frames.
+    /// </summary>
     public LibraryItem? AddRecording(
-        string filePath, TimeSpan duration, int width, int height, BitmapSource? frame, string? sourceApp, string? sourceTitle, DateTime started) =>
-        Guarded("add a recording", () =>
+        string filePath, TimeSpan duration, int width, int height, BitmapSource? frame, string? sourceApp, string? sourceTitle, DateTime started,
+        LibraryItemKind kind = LibraryItemKind.Recording) =>
+        Guarded("add a video", () =>
         {
             var item = new LibraryItem
             {
-                Kind = LibraryItemKind.Recording,
+                Kind = kind,
                 FilePath = filePath,
                 ThumbnailPath = frame is null ? null : WriteThumbnail(frame),
                 Title = Path.GetFileNameWithoutExtension(filePath),

@@ -108,7 +108,11 @@ public sealed class FfmpegProcess : IDisposable
     /// <summary>The last lines ffmpeg wrote to its error output.</summary>
     public string Errors => string.Join(Environment.NewLine, _errors);
 
-    public static FfmpegProcess Start(string exe, IReadOnlyList<string> arguments, bool withInput)
+    /// <summary>What ffmpeg writes to stdout (progress lines, a piped image), when started with output.</summary>
+    public Stream Output => _process.StandardOutput.BaseStream;
+
+    /// <param name="withOutput">Read stdout through <see cref="Output"/> (progress, piped images).</param>
+    public static FfmpegProcess Start(string exe, IReadOnlyList<string> arguments, bool withInput, bool withOutput = false)
     {
         var info = new ProcessStartInfo(exe)
         {
@@ -116,7 +120,7 @@ public sealed class FfmpegProcess : IDisposable
             CreateNoWindow = true,
             RedirectStandardInput = withInput,
             RedirectStandardError = true,
-            RedirectStandardOutput = false,
+            RedirectStandardOutput = withOutput,
             StandardErrorEncoding = Encoding.UTF8,
         };
         foreach (var argument in arguments)

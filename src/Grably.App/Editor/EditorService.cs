@@ -135,13 +135,11 @@ public sealed class EditorService(
     }
 
     /// <summary>An image from the clipboard becomes a new, unsaved document.</summary>
-    public EditorWindow? OpenClipboardImage()
-    {
-        if (Clipboard.GetImage() is not { } bitmap)
-        {
-            return null;
-        }
+    public EditorWindow? OpenClipboardImage() => Clipboard.GetImage() is { } bitmap ? OpenImage(bitmap) : null;
 
+    /// <summary>Any picture (a frame from the trim editor, the clipboard) as a new, unsaved document.</summary>
+    public EditorWindow OpenImage(BitmapSource bitmap)
+    {
         var image = bitmap.ToPixelBuffer();
         return Show(new EditorDocumentSource
         {

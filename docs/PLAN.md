@@ -14,8 +14,8 @@ Each milestone is one GitHub issue and one stacked PR (each branch starts from t
 - [x] M5 OCR and scrolling capture - issue #11, PR #12
 - [x] M6 Recording engine, video only - issue #13, PR #14
 - [x] M7 Audio and recording UX - issue #15, PR #16
-- [x] M8 Cursor effects and webcam - issue #17
-- [ ] M9 Trim editor and export
+- [x] M8 Cursor effects and webcam - issue #17, PR #18
+- [x] M9 Trim editor and export - issue #19
 - [ ] M10 Packaging, updates, release
 - [ ] M11 Hardening pass
 
@@ -88,9 +88,9 @@ Decisions made while building, which take precedence over the plan text below:
   - Picking: the overlay picks the target. A clicked window is recorded as a window (followed if it moves), a whole screen as a monitor, anything else as a region on one screen.
   - Before recording: the pre-record bar has PC sound, microphone with a live level, fps, Record and Cancel. The countdown runs while the encoder is probed, so recording starts the moment it ends.
   - While recording: the control bar has the timer, pause, mute, stop and discard. The pause hotkey is registered only while recording, and the tray shows the recording icon.
-  - When stopped: the MP4 is saved to the videos folder (`Grably_yyyy-MM-dd_HH-mm-ss.mp4`) and added to the library with a thumbnail and duration, and the session folder is removed.
+  - When stopped: the MP4 is saved to the videos folder (`Grably_yyyy-MM-dd_HH-mm-ss.mp4`) and added to the library with a thumbnail and duration, the session folder is removed, and the trim editor opens on it.
   - Interrupted recordings: sessions with a video but no saved MP4 are offered at startup (save, delete, or ask again).
-  - Library: recordings open in the default player until the trim editor (M9).
+  - Library: recordings open in the trim editor, GIFs in the default viewer.
 - **Interruptions and errors:**
   - Exit asks to stop and save a running recording. Sign-out closes the recording files properly; the recording is offered back at the next start.
   - The recovery prompt has explicit Save / Delete / Later buttons, and Delete uses the Recycle Bin.
@@ -120,7 +120,23 @@ Decisions made while building, which take precedence over the plan text below:
   - The same frames feed the on-screen `WebcamBubble` and the compositor. The bubble is a mirrored circle or rounded rectangle in three sizes, draggable and excluded from capture. The compositor draws the picture centre-cropped into a geometry mask where the bubble is.
 - **Testing without the user's devices:** `grably-dev effects-test` records the test pattern with scripted pointer, click and shortcut input and a generated camera picture (`SyntheticWebcam`), then checks each effect in frames from the video. A real camera is a manual check: Grably never turns it on by itself.
 - **Measured on the development machine (Intel QSV, 3440x1440 at 125 %):** 30 fps native with no drops and 9.5 ms per frame; 60 fps native with 1 late frame in 8 s; the BGRA fallback keeps up at 30 fps after 3 start-up drops. Test-pattern colours come back within 2 levels on both paths. Captures have no yellow border: borderless capture is granted to the unpackaged app.
-- **UI snapshots** for the Library, Settings and the empty Library use throwaway sample data in a temporary folder, never the user's library: `--ui-snapshot Library|LibraryEmpty|Settings|SettingsConflict`.
+- **UI snapshots** for the Library, Settings and the empty Library use throwaway sample data in a temporary folder, never the user's library: `--ui-snapshot Library|LibraryEmpty|Settings|SettingsConflict`. `--ui-snapshot Trim` makes a 12-second test video with a tone (needs the bundled ffmpeg) and shows it with two edits, a selection and the playhead on an exact frame.
+- **Trim editor** (`App/Trim`):
+  - Edits are an `EditList` (Core) of kept parts in the recording's own time. Trimming, cutting and moving a handle each return a new list, so undo and redo walk a list of versions. The recording file is never changed. Saved edits reopen as one step on top of the whole recording, so undo still brings back what was cut.
+  - A trim handle dragged outwards brings that end back (`EditList.WithEnds`); cuts in between stay.
+  - Edits and the playhead snap to frame starts (`VideoFrames`). When paused, the preview is the exact frame from ffmpeg: seeked a quarter of a frame early, a BMP through a pipe, at most 1600 px wide, the last 30 kept. So what is on screen is exactly where an export cuts. While scrubbing, the newest wanted frame is decoded next and the ones passed over are skipped.
+  - Playback uses `MediaElement`, followed every 15 ms; it jumps over a removed part when the next tick would land in it, so removed frames do not show. If Windows cannot play the file, the window still steps through it frame by frame.
+  - Closing the window stops its ffmpeg work (frames, thumbnails, sound wave), so the video is free for a rename or delete at once.
+  - The timeline's thumbnails (keyframes only past two minutes) and sound wave (square-root scale, so quiet sound shows) are made by ffmpeg each time the video opens.
+  - Edits are saved after every change in `<local>/trims/<hash of the path>.json`. They are ignored when the video's length has changed, follow a rename in the library, and are deleted with the video.
+  - A recording opens in the trim editor when it is saved and from the library. "Edit this frame" sends the full-size frame to the image editor as a new picture.
+  - Decoded pictures are copied out of their decoder (`BitmapConversion.Decode`): a frozen `BitmapFrame` still belongs to the thread that decoded it, and cropping it on the UI thread throws.
+- **Export** (`Platform/Recording/VideoExporter`):
+  - Always re-encoded: each kept part goes through `trim`/`atrim`, then `concat`, so cuts are exact to the frame. MP4 uses the probed encoder and AAC. GIF gets its own palette (`palettegen` in diff mode, Bayer dithering) and has no sound.
+  - The picture is cut half a frame before each edit, between two frames. Recordings pass through Matroska, whose time stamps are whole milliseconds, so frame 1 sits at 0.033 s, before 1/30 s; cutting at the exact time started a third of all cuts one frame late (found in review). Sound is cut at the exact times.
+  - Exports go next to the recording as `..._edited.mp4` or `.gif` and join the library; GIFs are listed as GIF items.
+  - Progress comes from `-progress pipe:1`. The file is written as `name.mp4.part` and renamed when complete, so a crash or sign-out never leaves a broken video under the real name. Cancelling, closing the window or quitting kills ffmpeg at once and removes the part; closing or quitting during an export asks first, and sign-out stops it without asking.
+  - Checked with `grably-dev export`: exports of the test video and of a QSV test-pattern recording are the kept length to the millisecond, at full size and 720p, and GIFs decode. The test video is made through Matroska like a recording, and each part of an export starts on exactly the recording's frame at its cut, including cuts on frames 1, 31 and 277.
 
 ## The plan
 

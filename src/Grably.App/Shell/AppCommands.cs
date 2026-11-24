@@ -147,6 +147,12 @@ public sealed class AppCommands(
             return;
         }
 
+        if (!await services.GetRequiredService<Trim.TrimService>().ConfirmExitAsync())
+        {
+            logger.LogInformation("Exit cancelled to finish an export");
+            return;
+        }
+
         // Ask about unsaved editors first: during Shutdown, WPF ignores a window's request to stay open.
         if (!services.GetRequiredService<Editor.EditorService>().ConfirmCloseAll())
         {

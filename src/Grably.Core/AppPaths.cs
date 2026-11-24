@@ -39,6 +39,9 @@ public sealed class AppPaths
 
     public string ThumbnailsFolder => Path.Combine(LocalRoot, "thumbnails");
 
+    /// <summary>The trim editor's edit lists, one small file per video.</summary>
+    public string TrimsFolder => Path.Combine(LocalRoot, "trims");
+
     public static AppPaths FromEnvironment()
     {
         var home = Environment.GetEnvironmentVariable(HomeEnvironmentVariable);

@@ -1,5 +1,6 @@
 # Recording end to end: the Record hotkey, a click on a screen in the overlay, Enter in the pre-record bar, the
-# countdown, about five seconds of recording with the PC's sound, the Stop hotkey, then the saved MP4 and the library.
+# countdown, about five seconds of recording with the PC's sound, the Stop hotkey, then the saved MP4, the library
+# and the trim editor opening on it.
 param([switch]$Keep)
 . "$PSScriptRoot\Common.ps1"
 
@@ -52,6 +53,8 @@ try {
         Check (@($info.streams | Where-Object { $_.codec_type -eq 'audio' -and $_.codec_name -eq 'aac' }).Count -eq 1) 'it has the PC sound as AAC'
         $listed = & $DevCli library --expect-file $video.FullName | Select-Object -Last 1
         Check ($listed -like 'PASS*') 'the recording is in the library'
+        $trim = & $DevCli wait-window "$($video.Name) - Grably trim" 10 | Select-Object -Last 1
+        Check ($trim -like 'PASS*') 'the trim editor opens on it'
     }
 
     Check (@(Get-ChildItem "$runHome\local\sessions" -Directory -ErrorAction SilentlyContinue).Count -eq 0) 'the session folder is cleaned up'

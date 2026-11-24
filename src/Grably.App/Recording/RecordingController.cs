@@ -40,7 +40,7 @@ public enum RecordingState
 /// </summary>
 public sealed class RecordingController(
     ScreenshotService screenshots, SettingsStore settings, AppPaths paths, HotkeyController hotkeys, GlobalHotkeyService globalHotkeys,
-    TrayIconController tray, LibraryService library, UserNotifications notifications, ILogger<RecordingController> logger)
+    TrayIconController tray, LibraryService library, Trim.TrimService trims, UserNotifications notifications, ILogger<RecordingController> logger)
 {
     private static readonly Core.Hotkeys.HotkeyGesture Escape = Core.Hotkeys.HotkeyGesture.Parse("Esc");
 
@@ -381,7 +381,10 @@ public sealed class RecordingController(
                 return;
             }
 
-            await SaveAsync(result.Session, result.SessionFolder, _started, result.Duration, _source);
+            if (await SaveAsync(result.Session, result.SessionFolder, _started, result.Duration, _source) is { } file)
+            {
+                trims.Open(file);
+            }
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -396,8 +399,11 @@ public sealed class RecordingController(
         }
     }
 
-    /// <summary>Muxes the session into the videos folder, adds it to the library and removes the session.</summary>
-    private async Task SaveAsync(RecordingSession session, string folder, DateTime started, TimeSpan? duration, WindowInfo? source)
+    /// <summary>
+    /// Muxes the session into the videos folder, adds it to the library and removes the session. Returns the video, or
+    /// null when it could not be saved.
+    /// </summary>
+    private async Task<string?> SaveAsync(RecordingSession session, string folder, DateTime started, TimeSpan? duration, WindowInfo? source)
     {
         var ffmpeg = FfmpegLocator.Find();
         var videos = settings.Current.General.VideosFolder ?? paths.DefaultVideosFolder;
@@ -407,7 +413,7 @@ public sealed class RecordingController(
         {
             logger.LogError("Saving the recording failed: {Error}", error);
             notifications.Show("The recording could not be saved. It will be offered again when Grably starts.");
-            return;
+            return null;
         }
 
         // Saved: say so in the session before anything else, so a session that cannot be removed is never saved twice.
@@ -418,6 +424,7 @@ public sealed class RecordingController(
         DeleteSession(folder);
         logger.LogInformation("Recording saved ({Duration}, {Width}x{Height})", duration, session.Width, session.Height);
         notifications.Show($"Recording saved as {Path.GetFileName(file)}");
+        return file;
     }
 
     private async Task<bool> CountdownAsync(Core.Geometry.PixelRect area)

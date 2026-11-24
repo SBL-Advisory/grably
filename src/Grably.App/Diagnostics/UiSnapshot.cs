@@ -31,7 +31,7 @@ namespace Grably.App.Diagnostics;
 internal static class UiSnapshot
 {
     private const string Known =
-        "Library, LibraryEmpty, Settings, SettingsConflict, Editor, PreRecord, RecordingBar, OverlayHover, OverlayDrag, OverlayAdjust";
+        "Library, LibraryEmpty, Settings, SettingsConflict, Editor, Trim, PreRecord, RecordingBar, OverlayHover, OverlayDrag, OverlayAdjust";
 
     /// <summary>Where recording windows are placed for snapshots: far off every screen.</summary>
     private static readonly PixelRect OffScreen = new(-30000, -30000, 1280, 720);
@@ -61,6 +61,7 @@ internal static class UiSnapshot
                 "overlaydrag" => RenderOverlay(OverlayScenario.Drag),
                 "overlayadjust" => RenderOverlay(OverlayScenario.Adjust),
                 "editor" => RenderWindow(SampleEditor(services)),
+                "trim" => RenderWindow(SampleTrim(services, scratch, logger)),
                 _ => throw new ArgumentException($"Unknown window '{request.Window}'. Known: {Known}."),
             };
         }
@@ -179,6 +180,45 @@ internal static class UiSnapshot
     }
 
     /// <summary>The editor over a synthetic screenshot with one of every annotation and the rectangle selected.</summary>
+    /// <summary>
+    /// The trim editor on a generated 12-second test video with a tone, trimmed to 1-11 s with 4-6 s cut out, a
+    /// selection, and the playhead inside it. Needs the bundled ffmpeg.
+    /// </summary>
+    private static Window SampleTrim(IServiceProvider services, string scratch, ILogger logger)
+    {
+        var ffmpeg = Platform.Recording.FfmpegLocator.Find();
+        Directory.CreateDirectory(scratch);
+        var video = Path.Combine(scratch, "Grably_2026-11-23_10-24-02.mp4");
+        var (code, errors) = Wait(Platform.Recording.FfmpegProcess.RunAsync(
+            ffmpeg,
+            ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30", "-f", "lavfi", "-i", "sine=frequency=330:sample_rate=48000",
+                "-af", "volume='0.2+0.8*abs(sin(t*1.3))':eval=frame", "-t", "12", "-c:v", "mpeg4", "-q:v", "3", "-g", "30", "-c:a", "aac", "-shortest", "-y", video],
+            TimeSpan.FromMinutes(1)));
+        if (code != 0)
+        {
+            throw new InvalidOperationException($"The sample video could not be made: {errors}");
+        }
+
+        var window = new Trim.TrimWindow(services.GetRequiredService<Trim.TrimService>(), video, ffmpeg, logger, remember: false);
+        Wait(window.PrepareSampleAsync());
+        return window;
+    }
+
+    /// <summary>Keeps the UI thread's messages flowing while <paramref name="task"/> runs (its awaits come back here).</summary>
+    private static void Wait(Task task)
+    {
+        var frame = new DispatcherFrame();
+        task.ContinueWith(_ => frame.Continue = false, TaskScheduler.Default);
+        Dispatcher.PushFrame(frame);
+        task.GetAwaiter().GetResult();
+    }
+
+    private static T Wait<T>(Task<T> task)
+    {
+        Wait((Task)task);
+        return task.Result;
+    }
+
     private static EditorWindow SampleEditor(IServiceProvider services)
     {
         var area = new PixelRect(0, 0, 960, 600);

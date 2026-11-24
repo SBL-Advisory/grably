@@ -5,8 +5,11 @@ using System.Windows.Media.Imaging;
 using Grably.App.Capture;
 using Grably.App.Editor;
 using Grably.App.Shell;
+using Grably.App.Trim;
+using Grably.Core;
 using Grably.Core.Annotations;
 using Grably.Core.Library;
+using Grably.Core.Recording;
 using Grably.Platform.Shell;
 using Microsoft.Extensions.Logging;
 
@@ -14,18 +17,27 @@ namespace Grably.App.Library;
 
 /// <summary>What the library can do with its items. Every action reports problems to the user instead of throwing.</summary>
 public sealed class LibraryActions(
-    LibraryService library, EditorService editors, UserNotifications notifications, ILogger<LibraryActions> logger)
+    LibraryService library, EditorService editors, TrimService trims, AppPaths paths, UserNotifications notifications,
+    ILogger<LibraryActions> logger)
 {
-    /// <summary>Screenshots open in the editor; recordings in the default video player until the trim editor exists (M9).</summary>
+    /// <summary>Screenshots open in the image editor, videos in the trim editor, GIFs in the default viewer.</summary>
     public void Open(LibraryItem item)
     {
         if (item.Kind == LibraryItemKind.Screenshot)
         {
             editors.OpenLibraryItem(item);
         }
-        else if (Exists(item))
+        else if (!Exists(item))
         {
-            Try("open the video", () => Process.Start(new ProcessStartInfo(item.FilePath!) { UseShellExecute = true }));
+            return;
+        }
+        else if (item.Kind == LibraryItemKind.Recording)
+        {
+            trims.Open(item.FilePath!);
+        }
+        else
+        {
+            Try("open the GIF", () => Process.Start(new ProcessStartInfo(item.FilePath!) { UseShellExecute = true }));
         }
     }
 
@@ -104,6 +116,11 @@ public sealed class LibraryActions(
                 throw new IOException("The library could not be updated, so the file keeps its old name.");
             }
 
+            if (item.Kind == LibraryItemKind.Recording)
+            {
+                MoveOrForgetEdits(() => TrimEdits.Move(paths.TrimsFolder, source, target));
+            }
+
             // The project remembers which image it flattens to; Grably.exe <project> must save to the new name.
             if (item.ProjectPath is { } project && File.Exists(project))
             {
@@ -148,6 +165,11 @@ public sealed class LibraryActions(
 
         var gone = deletable.Where(i => !(i.FilePath is { } f && File.Exists(f)) && !(i.ProjectPath is { } p && File.Exists(p))).ToList();
         library.Remove(gone);
+        foreach (var video in gone.Where(i => i.Kind == LibraryItemKind.Recording && i.FilePath is not null))
+        {
+            MoveOrForgetEdits(() => TrimEdits.Delete(paths.TrimsFolder, video.FilePath!));
+        }
+
         if (gone.Count < deletable.Count)
         {
             notifications.Show(deletable.Count == 1
@@ -161,10 +183,24 @@ public sealed class LibraryActions(
     }
 
     /// <summary>Forgets those of the items whose files are still gone (nothing on disk is touched).</summary>
-    public void RemoveMissing(IEnumerable<LibraryItem> items) => library.Remove(items.Where(LibraryService.IsMissing).ToList());
+    public void RemoveMissing(IEnumerable<LibraryItem> items)
+    {
+        var missing = items.Where(LibraryService.IsMissing).ToList();
+        library.Remove(missing);
+        foreach (var video in missing.Where(i => i.Kind == LibraryItemKind.Recording && i.FilePath is not null))
+        {
+            MoveOrForgetEdits(() => TrimEdits.Delete(paths.TrimsFolder, video.FilePath!));
+        }
+    }
 
     private bool IsBeingEdited(LibraryItem item, string what)
     {
+        if (trims.IsOpen(item.FilePath))
+        {
+            notifications.Show($"{item.Title} is open in the trim editor. Close it before {what} it.");
+            return true;
+        }
+
         if (!editors.IsEditing(item.FilePath, item.ProjectPath))
         {
             return false;
@@ -172,6 +208,20 @@ public sealed class LibraryActions(
 
         notifications.Show($"{item.Title} is open in the editor. Close it before {what} it.");
         return true;
+    }
+
+    /// <summary>A video's saved trim edits follow it when it is renamed and go when it is deleted.</summary>
+    private void MoveOrForgetEdits(Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The video itself was handled; at worst its trimming starts afresh next time.
+            logger.LogWarning(ex, "Could not move or delete the saved edits of a video");
+        }
     }
 
     private bool Exists(LibraryItem item)

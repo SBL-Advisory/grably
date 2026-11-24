@@ -30,6 +30,7 @@ public partial class App : Application
         {
             _services.GetService<Recording.RecordingController>()?.StopForSessionEnd();
             _services.GetService<Editor.EditorService>()?.SaveForSessionEnd();
+            _services.GetService<Trim.TrimService>()?.SessionEnding();
         };
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             _logger.LogCritical(e.ExceptionObject as Exception, "Unhandled error (terminating: {Terminating})", e.IsTerminating);

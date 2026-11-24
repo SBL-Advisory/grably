@@ -43,6 +43,7 @@ internal static class ServiceRegistration
         services.AddSingleton<TextIndexer>();
         services.AddSingleton<ScrollingCaptureService>();
         services.AddSingleton<Recording.RecordingController>();
+        services.AddSingleton<Trim.TrimService>();
 
         // Windows and view models
         services.AddTransient<LibraryWindow>();
