@@ -11,8 +11,9 @@ namespace Grably.App.Capture.Overlay;
 
 /// <summary>
 /// A borderless, topmost window covering exactly one monitor (placed in physical pixels, so mixed-DPI setups line
-/// up). Pointer positions are read with GetCursorPos in physical pixels rather than from WPF, which keeps a drag
-/// that crosses monitors exact. All overlays share one <see cref="RegionSelection"/>.
+/// up). Pointer positions come from each mouse event, converted to physical screen pixels with PointToScreen: that
+/// is where the event happened even if it is handled late, and it stays exact while the mouse is captured and the
+/// drag crosses onto another monitor. All overlays share one <see cref="RegionSelection"/>.
 /// </summary>
 public sealed class CaptureOverlayWindow : Window
 {
@@ -41,7 +42,12 @@ public sealed class CaptureOverlayWindow : Window
         Cursor = Cursors.Cross;
         Content = _surface;
 
-        SourceInitialized += (_, _) => Place();
+        SourceInitialized += (_, _) =>
+        {
+            // A screenshot taken while recording must not put the overlay into the video.
+            Platform.Display.WindowActions.ExcludeFromCapture(new System.Windows.Interop.WindowInteropHelper(this).Handle);
+            Place();
+        };
         Loaded += (_, _) => Place();
         DpiChanged += (_, _) => Dispatcher.BeginInvoke(Place);
         _selection.Changed += OnSelectionChanged;
@@ -61,13 +67,13 @@ public sealed class CaptureOverlayWindow : Window
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
-        _selection.MovePointer(ScreenPointer.Position());
+        _selection.MovePointer(Physical(e));
     }
 
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonDown(e);
-        var p = ScreenPointer.Position();
+        var p = Physical(e);
         CaptureMouse();
         if (e.ClickCount == 2 && _selection.Phase == SelectionPhase.Adjusting && _selection.Selection is { } s && s.Contains(p))
         {
@@ -90,7 +96,14 @@ public sealed class CaptureOverlayWindow : Window
             return;
         }
 
-        _selection.Release(ScreenPointer.Position());
+        _selection.Release(Physical(e));
+    }
+
+    /// <summary>Where the event happened, in physical pixels of the virtual desktop.</summary>
+    private PixelPoint Physical(MouseEventArgs e)
+    {
+        var screen = PointToScreen(e.GetPosition(this));
+        return new PixelPoint((int)Math.Round(screen.X), (int)Math.Round(screen.Y));
     }
 
     protected override void OnMouseRightButtonDown(MouseButtonEventArgs e)

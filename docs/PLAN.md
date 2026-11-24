@@ -8,15 +8,15 @@ Each milestone is one GitHub issue and one stacked PR (each branch starts from t
 
 - [x] M0 Logo and brand assets - issue #1, PR #2
 - [x] M1 Scaffold - issue #3, PR #4
-- [x] M2 Screenshot capture - issue #5
-- [ ] M3 Annotation editor
-- [ ] M4 Library and Settings UI
-- [ ] M5 OCR and scrolling capture
-- [ ] M6 Recording engine, video only
-- [ ] M7 Audio and recording UX
-- [ ] M8 Cursor effects and webcam
-- [ ] M9 Trim editor and export
-- [ ] M10 Packaging, updates, release
+- [x] M2 Screenshot capture - issue #5, PR #6
+- [x] M3 Annotation editor - issue #7, PR #8
+- [x] M4 Library and Settings UI - issue #9, PR #10
+- [x] M5 OCR and scrolling capture - issue #11, PR #12
+- [x] M6 Recording engine, video only - issue #13, PR #14
+- [x] M7 Audio and recording UX - issue #15, PR #16
+- [x] M8 Cursor effects and webcam - issue #17, PR #18
+- [x] M9 Trim editor and export - issue #19, PR #20
+- [x] M10 Packaging, updates, release - issue #21
 - [ ] M11 Hardening pass
 
 ## Implementation notes
@@ -34,6 +34,153 @@ Decisions made while building, which take precedence over the plan text below:
 - **Full-screen capture** takes the monitor under the pointer. **Window capture** crops the frozen desktop to the foreground window's visible frame, so anything covering that window is included (what you see is what you get).
 - **Overlay logic** lives in `Grably.Core/Capture/RegionSelection` (unit-tested state machine); the WPF overlay only draws it and feeds it physical pointer positions from `GetCursorPos`.
 - **End-to-end checks** drive the real app with `grably-dev send-keys`, `wait-window` and `mouse` (which refuses to click unless a named Grably window is visible). Verified on a two-monitor 100 %/125 % setup: a drag across the monitor seam captures the exact pixel area.
+- **Overlay pointer positions** come from each mouse event (`PointToScreen`), not `GetCursorPos`: a late-handled mouse-down otherwise starts the selection where the cursor has moved to (found by the M3 end-to-end run).
+- **Editor logic** lives in `Grably.Core/Annotations/AnnotationEditor` (tools, gestures, selection, z-order, styles, crop, undo), unit-tested without WPF. The WPF `EditorCanvas` draws and forwards input; one `AnnotationRenderer` draws both the screen and the export.
+- **Projects are created on first save,** not at capture time: until the image is annotated, the saved PNG is itself the original. A `.grably` zip holds `original.png`, `document.json` and `project.json` (the flattened image's path). `Grably.exe <file>` opens an image or project in the editor (forwarded to the running instance).
+- **Blur and pixelate** are computed in Core (`ImageFilters`) from the original pixels, so redaction never reveals other annotations and re-renders identically.
+- **Soft shadow** is drawn as three offset, very transparent copies of the shape (no bitmap effects), so it is identical on screen and in exports.
+- **Last-used style per tool** is kept in `settings.editor.toolStyles` and saved when an editor closes.
+- **Never losing or misplacing work:**
+  - Tray Exit asks every edited editor first (`CloseCoordinator`) and aborts on Cancel, because WPF ignores Cancel during `Shutdown`.
+  - Windows sign-out keeps unsaved annotations in their projects without asking.
+  - Save only overwrites captures, Save as results, and project image paths inside a screenshots folder or recorded by Grably's own projects.
+  - An opened image file is never overwritten: its first save is a Save as.
+- **End-to-end scripts** live in `tests/E2E` (scratch copies get wiped between sessions). Run them after changes to capture or the editor.
+- **Library** (`Grably.Core/Library/LibraryRepository`): SQLite with WAL and `PRAGMA user_version` migrations; a newer schema than the app knows is refused rather than guessed at. Search is an FTS5 external-content table over title, app, window title and OCR text, kept in step by triggers; each search word is a prefix match. File paths are unique (case-insensitive). An item has a file, a project, or both: annotations kept at sign-out for an image Grably may not overwrite become a project-only item.
+- **`LibraryService`** keeps the library in step with captures, editor saves and kept projects, and owns the 360x240 JPEG thumbnails. Library failures are logged and never fail a capture or a save; opening the database is retried on the next use, and a damaged database (found on opening by `PRAGMA quick_check`, or by a query error) is moved to `library.db.broken-*`. A new library, on first run or after that, is filled from disk (`LibraryScanner`): every project (which records its image) and every image in the screenshots folders, so no annotations become unreachable. It only ever deletes thumbnails inside its own folder.
+- **Library actions:** Delete sends the image to the Recycle Bin, then its project once the image is gone; for a file that cannot be recycled (network share, removable drive) Windows asks before destroying it, and an item whose image is kept keeps its project and stays in the library. An item open in an editor cannot be renamed or deleted. Rename also updates the project's image path and is undone if the library cannot be updated. The grid checks files in the background (network folders can be slow), keeps the selection across refreshes and shows up to 20,000 items.
+- **After a capture** the options are: open the editor (default), a corner preview (`CapturePreviewWindow`: edit, copy, show in folder, drag the file out; it hides after 7 s unless the pointer is on it), or only copy and save.
+- **Settings** edit a copy (`AppSettings.Clone`) until Save, which writes only the sections the window shows (`WithWindowSectionsFrom`) so changes made elsewhere meanwhile, such as editor tool styles, survive. While a shortcut box is listening Grably's own hotkeys are released (`HotkeyController.Suspend`), so pressing PrintScreen there records it instead of capturing; after recording the box stops listening. A shortcut needs Win, or two of Ctrl, Alt and Shift (one being Ctrl or Alt), unless its key is PrintScreen, Pause, Scroll Lock or F13-F24 (`HotkeyGesture.IsSafeAsGlobalHotkey`), so it can never take a letter, Ctrl+C or Alt+F4 from other apps. Save reports duplicate shortcuts and shortcuts another app owns; a taken PrintScreen shows a hint with a button to Windows' keyboard settings. Recording settings arrive with recording (M7).
+- **Start with Windows** is the HKCU Run value `Grably` (`"<exe>" --background`). Settings only writes it when the choice changes, so saving settings from a development build never repoints an installed Grably's entry.
+- **OCR** (`Platform/Text/OcrService`) uses `Windows.Media.Ocr` in the user's profile languages. Windows OCR misses text in tall, mostly empty images long before its 10,000-px limit (a 10,000-px strip with one line returns nothing), so `Core/Text/OcrLayout` reads every image in overlapping strips of at most 2,000 px, enlarges narrow images 2x strip by strip, and keeps each line from the one strip that owns its centre. Recognised text is never logged.
+- **Text features:** Capture text picks an area (the overlay with its own hint, `RegionSelection.Hint`) and copies its text. The editor's Copy text (Ctrl+Shift+C) reads the original image inside the crop, not the annotations. `TextIndexer` reads library screenshots in the background, newest first. It reads each file into memory and closes it at once, so saves, renames and deletes never wait on it, then decodes it with Windows imaging: whole up to 16 Mpx, strip by strip beyond. It stores `ocr_text` (empty means read, nothing found) only if the item has not changed since it was read. An editor save clears the text so it is read again. `screenshot.makeTextSearchable` turns it off. OCR calls are serialized strip by strip, so a user's text capture never waits long behind indexing.
+- **Scrolling capture** (`ScrollingCaptureService`) turns the wheel over the centre of the picked area. After each turn it waits for the area to change (apps repaint late) and then to settle. It adapts the number of notches so each step moves about half the area, waits for held modifier keys (Ctrl or Shift would zoom or scroll sideways), and stitches off the UI thread.
+- **`Core/Imaging/ScrollStitcher`** compares rows on a band of columns without the scrollbar strip. Rows count as the same only when nearly every pixel matches: sampled columns made lines that differ in one digit ("Line 001", "Line 004") look identical, so sticky bands grew into the content and the capture stopped after one step (found in review; `ScrollStitcherTextTests` covers it with rendered text). A quick search on sampled columns proposes offsets, and full rows confirm them. A match tolerates up to 15 % differing rows (a hover highlight, a caret) and ignores single-colour rows, preferring the expected distance when repeating content allows several. Sticky headers and footers appear once.
+- **Scrolling capture endings:** the bottom of the page (no movement twice), Esc or Stop, the pointer leaving its resting spot, a held key, repeated mismatches (it steps back and halves the step first), or 30,000 px. Early endings are explained in a notification. The status panel sits outside the area and is excluded from capture (`SetWindowDisplayAffinity`).
+- **Known limit:** apps that scroll by fractional device pixels (browsers at 125 % scaling) re-render text slightly differently at each position. Such pages may stitch with mismatches, to be checked in the M11 hardening pass.
+- **ffmpeg** (until M10) was the LGPL v3 shared build `n9.0.2-39-g7adfbe40dc` from the FFmpeg-Builds month-end release of 2026-10-31, pinned in `tools/fetch-ffmpeg.ps1`; that script stays for quick developer setups. Since M10 the shipped one is Grably's own minimal build (see "Minimal ffmpeg" below). Either is copied next to `Grably.exe`, `grably-dev` and the tests. `FfmpegLocator` uses it, an explicit override, or PATH only with `GRABLY_FFMPEG_ALLOW_PATH=1`.
+- **Encoders** are chosen by a real 5-frame encode at the output size (`EncoderProbe`), in the order NVENC, QSV, AMF, Media Foundation, then HEVC, then smaller sizes. OpenH264 was dropped from the plan's list: Cisco's patent licence covers only Cisco's own binaries, not one built into ffmpeg, and Media Foundation (part of Windows) is the licensed software fallback. On the development machine NVENC and AMF are listed but fail, and QSV wins. Quality options come from `ffmpeg -h encoder=...` (QSV `-global_quality`, Media Foundation quality mode, OpenH264 a bitrate from the pixel rate).
+- **Recording engine** (`Platform/Recording`):
+  - Capture: Windows.Graphics.Capture copies each frame into its own texture.
+  - Compositor: a thread draws frame N at time N / fps with Direct2D (crop, scale, letterbox).
+  - Readback: the GPU video processor converts to NV12 (BT.709, limited range); BGRA is read back when it cannot.
+  - Writing: a buffer pool of about 128 MB feeds ffmpeg's stdin. Late frames are repeated (`FramePacer`), and when the encoder falls behind the newest frame is repeated instead of read back, so the duration always matches the clock.
+  - Output: a Matroska intermediate in `sessions/{id}`, remuxed to MP4 with `+faststart`.
+- **COM and WinRT interop** for capture is in `WinRtInterop.cs`: function pointers on the COM vtables (IGraphicsCaptureItemInterop, IDirect3DDxgiInterfaceAccess) and a raw-pointer `CreateDirect3D11DeviceFromDXGIDevice` import. CsWin32's projection would hand back its own COM types where the device is a Vortice object.
+- **Licensing of the shipped ffmpeg (settled in M10):** the FFmpeg-Builds package bundles about 40 libraries whose licences would need notices and, for LGPL and MPL parts, source. Grably ships its own minimal LGPL build instead (below).
+- **Recorder robustness:**
+  - Stop never hangs: a writer stuck on a full pipe gets ffmpeg killed, and what was written stays playable.
+  - Dispose joins the worker threads before freeing GPU objects.
+  - A capture callback racing Dispose is a no-op.
+  - The recorder raises `Failed` when ffmpeg dies mid-recording.
+  - A failed start leaves no orphaned ffmpeg and no "recording" session.
+  - Odd sizes are cropped by a pixel, never resampled.
+  - Window titles go into the session only, never the log.
+- **Capture exclusion works for layered WPF windows** (checked first, as planned, by `grably-dev exclusion-test`): `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` keeps both layered and opaque windows out of GDI screenshots and Windows.Graphics.Capture recordings. So the control bar, countdown and area outline are ordinary WPF windows; the outline also sits just outside the area.
+- **Recording clock** (`Core/Recording/RecordingClock`): one pausable clock on the performance counter in 100-ns ticks, the unit of WASAPI's packet timestamps. The frame pacer runs on it, and every audio packet is placed on the timeline by its own capture timestamp (`AudioTimeline`). Gaps (loopback sends nothing during silence, a device switch) become silence, drift beyond 20 ms drops the overlap, and packets captured during a pause are left out. This replaces the plan's end-of-recording drift correction: tracks are already on the clock.
+- **Audio** (`Platform/Recording/AudioCapture`): NAudio 3.3's `WasapiRecorder`, whose packets carry the QPC timestamp. Tracks are forced to 48 kHz stereo float (Windows converts) and written raw (`*.f32`), so a crash loses nothing and there is no 4 GB limit. The microphone follows the default device through Windows stream routing; loopback reopens when the default output changes (checked every second). Mute writes silence. A source that cannot start becomes a warning, and the recording goes on.
+- **Mux:** video stream-copied, tracks mixed with `amix normalize=0` and a limiter, AAC 192 kb/s, `apad` + `-shortest` so the video decides the length, `+faststart`.
+- **Sync, measured with `grably-dev synctest`** (a white flash and a 1 kHz beep at the same recording times, from a generated track that travels the same path as WASAPI packets):
+  - 10 s: audio 1 to 9 ms from video.
+  - With a 2-second pause: the pause is left out of the duration and sync is unchanged.
+  - The real WASAPI latency on speakers is a manual check.
+- **Recording flow** (`App/Recording/RecordingController`):
+  - Picking: the overlay picks the target. A clicked window is recorded as a window (followed if it moves), a whole screen as a monitor, anything else as a region on one screen.
+  - Before recording: the pre-record bar has PC sound, microphone with a live level, fps, Record and Cancel. The countdown runs while the encoder is probed, so recording starts the moment it ends.
+  - While recording: the control bar has the timer, pause, mute, stop and discard. The pause hotkey is registered only while recording, and the tray shows the recording icon.
+  - When stopped: the MP4 is saved to the videos folder (`Grably_yyyy-MM-dd_HH-mm-ss.mp4`) and added to the library with a thumbnail and duration, the session folder is removed, and the trim editor opens on it.
+  - Interrupted recordings: sessions with a video but no saved MP4 are offered at startup (save, delete, or ask again).
+  - Library: recordings open in the trim editor, GIFs in the default viewer.
+- **Interruptions and errors:**
+  - Exit asks to stop and save a running recording. Sign-out closes the recording files properly; the recording is offered back at the next start.
+  - The recovery prompt has explicit Save / Delete / Later buttons, and Delete uses the Recycle Bin.
+  - A saved session records its `outputPath` before it is removed, so it is never saved twice.
+  - An audio source that fails to start, or a failed output-device switch, becomes a warning instead of aborting the recording or crashing Grably (the switch is retried every second).
+  - A failure after the recorder started stops and saves it, never leaving it running invisibly.
+  - Discard pauses while it asks.
+- **Audio timestamps:** a packet with no or an absurd timestamp is taken to end now. Quiet tracks are filled with silence as time passes (up to 300 ms behind), never in one huge write when sound returns.
+- **Settings merge** became value by value (`AppSettings.WithChangesFrom`): the Settings window applies only what it changed, so pre-record bar choices made while it was open survive.
+- **Recording visibility:** the screenshot overlay and the corner preview are also excluded from capture, so a screenshot taken mid-recording is not in the video. WPF-UI's styles gave plain windows a minimum size, which made the small panels (scrolling capture, preview, recording bars) far too big; they now set `MinWidth`/`MinHeight` to 0.
+- **Cursor effects:**
+  - `Core/Recording/EffectTimeline` keeps clicks and keys on the recording clock: a ring grows for 550 ms; a caption shows for 1.6 s and fades for the last 0.3 s, and typed letters build a word.
+  - The pointer highlight is a ring, so the pointer keeps its colours.
+- **Keys never leak typed text:** `KeystrokeFormatter` ("shortcuts only") takes what the user's own keyboard layout types for the key (`KeyText`, from `ToUnicodeEx` with flag 4 so dead keys still work). It shows only Ctrl/Alt/Win chords and keys that never type. Anything that types text, anything with AltGr (right Alt, which Windows reports as Ctrl+Alt: AltGr+Q is @ on German keyboards), numpad keys and Alt codes are left out. Found in review: a US-only key list let these through.
+- **Input comes from Raw Input, not hooks** (`Platform/Input/InputMonitor`): a message-only window with `RIDEV_INPUTSINK` on its own thread, used only while a recording with clicks or keys runs.
+  - Raw Input is told after the fact: nothing the user does waits for Grably. Low-level hooks would stall input during a GC pause, and Windows silently removes hooks that time out.
+  - Held modifiers are followed from the input stream itself (left and right separately), since asking the keyboard later is wrong for quick shortcuts.
+  - Keys count only while the window in front overlaps what is recorded, and clicks only inside it.
+  - Keys are never logged.
+- **Overlays** (`Platform/Recording/OverlayRenderer`) are drawn by the compositor in Direct2D, mapped from screen pixels through the capture's crop and scale. A window target's frame is read each frame with one DWM call, outside the GPU lock, so effects follow a moving window. DirectWrite comes with `Vortice.Direct2D1` (there is no separate 3.x package).
+- **Webcam:**
+  - `WebcamSource` uses WinRT `MediaCapture` with a BGRA frame reader, at least 24 fps and up to 1280x720.
+    - Alpha is forced opaque, padded rows are packed, and three buffers are reused in turn.
+    - It falls back to shared access when another app has the camera.
+    - Any failure leaves the camera out with a clear message (privacy permission, in use) and never stops the recording.
+  - The camera opens with the pre-record bar, so the bubble can be placed before recording and does not delay the start.
+  - The same frames feed the on-screen `WebcamBubble` and the compositor. The bubble is a mirrored circle or rounded rectangle in three sizes, draggable and excluded from capture. The compositor draws the picture centre-cropped into a geometry mask where the bubble is.
+- **Testing without the user's devices:** `grably-dev effects-test` records the test pattern with scripted pointer, click and shortcut input and a generated camera picture (`SyntheticWebcam`), then checks each effect in frames from the video. A real camera is a manual check: Grably never turns it on by itself.
+- **Measured on the development machine (Intel QSV, 3440x1440 at 125 %):** 30 fps native with no drops and 9.5 ms per frame; 60 fps native with 1 late frame in 8 s; the BGRA fallback keeps up at 30 fps after 3 start-up drops. Test-pattern colours come back within 2 levels on both paths. Captures have no yellow border: borderless capture is granted to the unpackaged app.
+- **UI snapshots** for the Library, Settings and the empty Library use throwaway sample data in a temporary folder, never the user's library: `--ui-snapshot Library|LibraryEmpty|Settings|SettingsConflict`. `--ui-snapshot Trim` makes a 12-second test video with a tone (needs the bundled ffmpeg) and shows it with two edits, a selection and the playhead on an exact frame.
+- **Trim editor** (`App/Trim`):
+  - Edits are an `EditList` (Core) of kept parts in the recording's own time. Trimming, cutting and moving a handle each return a new list, so undo and redo walk a list of versions. The recording file is never changed. Saved edits reopen as one step on top of the whole recording, so undo still brings back what was cut.
+  - A trim handle dragged outwards brings that end back (`EditList.WithEnds`); cuts in between stay.
+  - Edits and the playhead snap to frame starts (`VideoFrames`). When paused, the preview is the exact frame from ffmpeg: seeked a quarter of a frame early, a BMP through a pipe, at most 1600 px wide, the last 30 kept. So what is on screen is exactly where an export cuts. While scrubbing, the newest wanted frame is decoded next and the ones passed over are skipped.
+  - Playback uses `MediaElement`, followed every 15 ms; it jumps over a removed part when the next tick would land in it, so removed frames do not show. If Windows cannot play the file, the window still steps through it frame by frame.
+  - Closing the window stops its ffmpeg work (frames, thumbnails, sound wave), so the video is free for a rename or delete at once.
+  - The timeline's thumbnails (keyframes only past two minutes) and sound wave (square-root scale, so quiet sound shows) are made by ffmpeg each time the video opens.
+  - Edits are saved after every change in `<local>/trims/<hash of the path>.json`. They are ignored when the video's length has changed, follow a rename in the library, and are deleted with the video.
+  - A recording opens in the trim editor when it is saved and from the library. "Edit this frame" sends the full-size frame to the image editor as a new picture.
+  - Decoded pictures are copied out of their decoder (`BitmapConversion.Decode`): a frozen `BitmapFrame` still belongs to the thread that decoded it, and cropping it on the UI thread throws.
+- **Export** (`Platform/Recording/VideoExporter`):
+  - Always re-encoded: each kept part goes through `trim`/`atrim`, then `concat`, so cuts are exact to the frame. MP4 uses the probed encoder and AAC. GIF gets its own palette (`palettegen` in diff mode, Bayer dithering) and has no sound.
+  - The picture is cut half a frame before each edit, between two frames. Recordings pass through Matroska, whose time stamps are whole milliseconds, so frame 1 sits at 0.033 s, before 1/30 s; cutting at the exact time started a third of all cuts one frame late (found in review). Sound is cut at the exact times.
+  - Exports go next to the recording as `..._edited.mp4` or `.gif` and join the library; GIFs are listed as GIF items.
+  - Progress comes from `-progress pipe:1`. The file is written as `name.mp4.part` and renamed when complete, so a crash or sign-out never leaves a broken video under the real name. Cancelling, closing the window or quitting kills ffmpeg at once and removes the part; closing or quitting during an export asks first, and sign-out stops it without asking.
+  - Checked with `grably-dev export`: exports of the test video and of a QSV test-pattern recording are the kept length to the millisecond, at full size and 720p, and GIFs decode. The test video is made through Matroska like a recording, and each part of an export starts on exactly the recording's frame at its cut, including cuts on frames 1, 31 and 277.
+
+- **Minimal ffmpeg** (`tools/ffmpeg/build.sh`, run in Docker by `tools/ffmpeg/build.ps1` and in the release workflow):
+  - The unmodified FFmpeg 9.0.2 release, cross-compiled with MinGW-w64 in a digest-pinned `ubuntu:24.04` image. Every source is pinned: SHA256 for tarballs, commits for git tags.
+  - Configured with `--disable-everything --disable-autodetect`, LGPL 2.1 or later. It enables only:
+    - the hardware and Media Foundation encoders
+    - AAC, MPEG-4 (test videos), PNG, BMP and GIF
+    - Matroska, MP4, GIF and image pipes
+    - the filters, lavfi sources and bitstream filters Grably uses
+  - Its extra libraries are permissive:
+    - zlib and libvpl, linked in statically
+    - nv-codec-headers 12.2 (NVIDIA drivers from 550; newer headers would need newer drivers) and AMF headers 1.5.2 (the minimum for ffmpeg 9)
+    - the MinGW runtime, linked statically, so only Windows system DLLs are imported. The script fails if anything else is.
+  - 14 MB instead of about 180 MB, so the installer went from 145 MB to 86 MB. Licences (including the MinGW-w64 runtime's) and `BUILD.txt` (versions, configure line) ship next to it.
+  - The build records its script's SHA256 (`BUILD-SCRIPT.sha256`). `build.ps1` reuses a build only while `build.sh` is unchanged, and `pack.ps1` refuses one made by another version of it.
+  - Anything new Grably asks of ffmpeg must be added to the lists in `build.sh`. Building it showed two gaps:
+    - the lavfi test sources need the `wrapped_avframe` decoder
+    - the `metadata` filter links against libavformat without declaring it, so `grably-dev synctest` now reads brightness from `showinfo` instead of `signalstats`
+  - All checks pass on it: encoders (QSV and Media Foundation here), `record --pattern` colours, `export --sample` with frame-exact cuts, GIF, `synctest` with a pause (within 1 ms), `effects-test`, the unit tests and the Trim snapshot.
+- **Packaging** (`build/pack.ps1`):
+  - A self-contained win-x64 publish, with LICENSE and the notices, packed by Velopack (`vpk` 1.2.161, a local dotnet tool).
+  - The package id `SBLAdvisory.Grably` installs to `%LocalAppData%\SBLAdvisory.Grably`, away from Grably's data folder, with a Start menu shortcut only. Uninstalling never touches the user's library.
+  - The script refuses the developer ffmpeg (`-AllowDevFfmpeg` only for local tries).
+- **Updates** (`App/Shell/UpdateService`):
+  - `VelopackApp.Build().Run()` runs first in `Main`. Its uninstall hook removes the start-with-Windows entry.
+  - Velopack's own install-at-startup is off. A downloaded update is installed only once the single-instance lock is held (`UpdateService.InstallPendingAtStartup`). Found in review: otherwise a second launch, which only hands its arguments to the running Grably, would swap the files under it mid-recording.
+  - Checks run 30 seconds after startup, then every 12 hours (30 minutes after a failure) while the setting is on, and on request from the tray and from Settings (About).
+  - A newer version downloads in the background. The tray item then becomes "Restart to update to X". It runs the usual exit questions (recording, unsaved editors, exports), then hands the update to Velopack's updater, which installs it and restarts Grably in the background. If the user doesn't restart, it installs at the next start. The "ready" balloon is never shown during a recording.
+  - `GRABLY_UPDATE_FEED` points updates at a folder or URL instead of GitHub Releases, for testing. Failures are logged and shown only when the user asked.
+- **Release** (`.github/workflows/release.yml`, on a `v*` tag matching `<Version>`):
+  - The ffmpeg job builds the minimal ffmpeg.
+  - The tag is checked against `<Version>` first.
+  - The Windows job:
+    - builds and tests
+    - runs the fresh ffmpeg through `grably-dev export --sample` as a GIF (MP4 too when the runner has an H.264 encoder)
+    - downloads the previous release for a delta (none for the first release)
+    - packs and uploads a draft release
+    - attaches the exact FFmpeg source tarball (LGPL) and only then publishes. A failed step stops it, and a re-run can finish a half-made release.
+  - `ffmpeg.yml` rebuilds ffmpeg and runs the same check on pull requests that change its build script.
+- **Checked with `tests/E2E/install.ps1`:**
+  - Setup installs 0.1.10, which starts, finds 0.1.1010 in a local feed and downloads it.
+  - Starting it again installs 0.1.1010 first.
+  - Uninstalling removes the app, the shortcut, its Installed apps entry and its start-with-Windows entry, and leaves the user's data. The script puts back a developer's own start-with-Windows entry.
+  - A silent Setup does not start the app; a normal one does.
+- **About** in Settings says Grably uses FFmpeg under the LGPL and has a Licenses button that opens the installed `THIRD-PARTY-NOTICES.md`.
 
 ## The plan
 

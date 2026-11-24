@@ -1,11 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Development harness: drives Core and Platform features from the terminal so they can be checked headlessly.
-       Not shipped. -->
+  <!-- Development harness: drives Core, Platform and App features from the terminal so they can be checked
+       headlessly. Not shipped. References the app for its WPF renderer (render command). -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>$(GrablyWindowsTfm)</TargetFramework>
     <SupportedOSPlatformVersion>$(GrablyMinWindows)</SupportedOSPlatformVersion>
+    <UseWPF>true</UseWPF>
     <AssemblyName>grably-dev</AssemblyName>
     <RootNamespace>Grably.DevCli</RootNamespace>
   </PropertyGroup>
@@ -13,6 +14,12 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Grably.Core\Grably.Core.csproj" />
     <ProjectReference Include="..\..\src\Grably.Platform\Grably.Platform.csproj" />
+    <ProjectReference Include="..\..\src\Grably.App\Grably.App.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- UseWPF drops System.IO from the implicit usings. -->
+    <Using Include="System.IO" />
   </ItemGroup>
 
 </Project>

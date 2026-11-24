@@ -5,10 +5,18 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Grably.App.Capture.Overlay;
+using Grably.App.Editor;
+using Grably.App.Imaging;
+using Grably.App.Library;
+using Grably.App.ViewModels;
 using Grably.App.Views;
+using Grably.Core;
+using Grably.Core.Annotations;
 using Grably.Core.Capture;
 using Grably.Core.Geometry;
+using Grably.Core.Hotkeys;
 using Grably.Core.Imaging;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -17,21 +25,61 @@ namespace Grably.App.Diagnostics;
 /// <summary>
 /// Debug-only: renders a window or the capture overlay to a PNG and exits, so layouts can be reviewed as images
 /// without anyone looking at the screen.
-/// Usage: Grably.exe --ui-snapshot Library|OverlayHover|OverlayDrag|OverlayAdjust --out file.png [--theme dark]
+/// Usage: Grably.exe --ui-snapshot (window) --out file.png [--theme dark], where window is one of
+/// <see cref="Known"/>. Sample data lives in a temporary folder, never in the user's library.
 /// </summary>
 internal static class UiSnapshot
 {
+    private const string Known =
+        "Library, LibraryEmpty, Settings, SettingsConflict, Editor, Trim, PreRecord, RecordingBar, OverlayHover, OverlayDrag, OverlayAdjust";
+
+    /// <summary>Where recording windows are placed for snapshots: far off every screen.</summary>
+    private static readonly PixelRect OffScreen = new(-30000, -30000, 1280, 720);
+
+    private static Window SampleControlBar()
+    {
+        var bar = new Recording.RecordingControlBar(OffScreen, OffScreen, microphone: true);
+        bar.Update(TimeSpan.FromSeconds(83), paused: false, muted: true);
+        return bar.Window;
+    }
+
     public static int Run(SnapshotRequest request, IServiceProvider services, ILogger logger)
     {
-        var bitmap = request.Window.ToLowerInvariant() switch
+        var scratch = Path.Combine(Path.GetTempPath(), $"grably-snapshot-{Guid.NewGuid():N}");
+        RenderTargetBitmap bitmap;
+        try
         {
-            "library" => RenderWindow(services.GetRequiredService<LibraryWindow>()),
-            "overlayhover" => RenderOverlay(OverlayScenario.Hover),
-            "overlaydrag" => RenderOverlay(OverlayScenario.Drag),
-            "overlayadjust" => RenderOverlay(OverlayScenario.Adjust),
-            _ => throw new ArgumentException(
-                $"Unknown window '{request.Window}'. Known: Library, OverlayHover, OverlayDrag, OverlayAdjust."),
-        };
+            bitmap = request.Window.ToLowerInvariant() switch
+            {
+                "library" => RenderWindow(SampleLibrary(services, scratch, withItems: true)),
+                "libraryempty" => RenderWindow(SampleLibrary(services, scratch, withItems: false)),
+                "settings" => RenderWindow(SampleSettings(services, conflict: false), height: 2900),
+                "settingsconflict" => RenderWindow(SampleSettings(services, conflict: true), height: 2900),
+                "prerecord" => RenderWindow(new Recording.PreRecordWindow(OffScreen, OffScreen, new Recording.PreRecordChoice(true, true, 30), null).Window),
+                "recordingbar" => RenderWindow(SampleControlBar()),
+                "overlayhover" => RenderOverlay(OverlayScenario.Hover),
+                "overlaydrag" => RenderOverlay(OverlayScenario.Drag),
+                "overlayadjust" => RenderOverlay(OverlayScenario.Adjust),
+                "editor" => RenderWindow(SampleEditor(services)),
+                "trim" => RenderWindow(SampleTrim(services, scratch, logger)),
+                _ => throw new ArgumentException($"Unknown window '{request.Window}'. Known: {Known}."),
+            };
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools(); // release the sample database so its folder can go
+            try
+            {
+                if (Directory.Exists(scratch))
+                {
+                    Directory.Delete(scratch, recursive: true);
+                }
+            }
+            catch (IOException ex)
+            {
+                logger.LogDebug(ex, "Could not delete {Folder}", scratch);
+            }
+        }
 
         var output = Path.GetFullPath(request.OutputPath);
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
@@ -47,8 +95,14 @@ internal static class UiSnapshot
         return 0;
     }
 
-    private static RenderTargetBitmap RenderWindow(Window window)
+    /// <param name="height">A taller window than usual, to show a whole scrolling page in one image.</param>
+    private static RenderTargetBitmap RenderWindow(Window window, double? height = null)
     {
+        if (height is { } h)
+        {
+            window.MinHeight = window.MaxHeight = window.Height = h;
+        }
+
         // Show it off-screen so layout and data binding run exactly as they would for the user.
         window.WindowStartupLocation = WindowStartupLocation.Manual;
         window.ShowActivated = false;
@@ -68,7 +122,10 @@ internal static class UiSnapshot
         {
             var background = Application.Current.TryFindResource("ApplicationBackgroundBrush") as Brush ?? Brushes.White;
             dc.DrawRectangle(background, null, new Rect(size));
-            dc.DrawRectangle(new VisualBrush(root), null, new Rect(size));
+            // Map exactly the root's own area: by default a VisualBrush stretches the content bounds, which include
+            // anything overflowing the window, and squashes the picture.
+            var brush = new VisualBrush(root) { Viewbox = new Rect(size), ViewboxUnits = BrushMappingMode.Absolute, Stretch = Stretch.Fill };
+            dc.DrawRectangle(brush, null, new Rect(size));
         }
 
         var bitmap = new RenderTargetBitmap(
@@ -120,6 +177,154 @@ internal static class UiSnapshot
         var bitmap = new RenderTargetBitmap(desktop.Width, desktop.Height, 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(surface);
         return bitmap;
+    }
+
+    /// <summary>The editor over a synthetic screenshot with one of every annotation and the rectangle selected.</summary>
+    /// <summary>
+    /// The trim editor on a generated 12-second test video with a tone, trimmed to 1-11 s with 4-6 s cut out, a
+    /// selection, and the playhead inside it. Needs the bundled ffmpeg.
+    /// </summary>
+    private static Window SampleTrim(IServiceProvider services, string scratch, ILogger logger)
+    {
+        var ffmpeg = Platform.Recording.FfmpegLocator.Find();
+        Directory.CreateDirectory(scratch);
+        var video = Path.Combine(scratch, "Grably_2026-11-23_10-24-02.mp4");
+        var (code, errors) = Wait(Platform.Recording.FfmpegProcess.RunAsync(
+            ffmpeg,
+            ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30", "-f", "lavfi", "-i", "sine=frequency=330:sample_rate=48000",
+                "-af", "volume='0.2+0.8*abs(sin(t*1.3))':eval=frame", "-t", "12", "-c:v", "mpeg4", "-q:v", "3", "-g", "30", "-c:a", "aac", "-shortest", "-y", video],
+            TimeSpan.FromMinutes(1)));
+        if (code != 0)
+        {
+            throw new InvalidOperationException($"The sample video could not be made: {errors}");
+        }
+
+        var window = new Trim.TrimWindow(services.GetRequiredService<Trim.TrimService>(), video, ffmpeg, logger, remember: false);
+        Wait(window.PrepareSampleAsync());
+        return window;
+    }
+
+    /// <summary>Keeps the UI thread's messages flowing while <paramref name="task"/> runs (its awaits come back here).</summary>
+    private static void Wait(Task task)
+    {
+        var frame = new DispatcherFrame();
+        task.ContinueWith(_ => frame.Continue = false, TaskScheduler.Default);
+        Dispatcher.PushFrame(frame);
+        task.GetAwaiter().GetResult();
+    }
+
+    private static T Wait<T>(Task<T> task)
+    {
+        Wait((Task)task);
+        return task.Result;
+    }
+
+    private static EditorWindow SampleEditor(IServiceProvider services)
+    {
+        var area = new PixelRect(0, 0, 960, 600);
+        var image = SyntheticDesktop(area, new PixelRect(80, 60, 640, 420));
+        var doc = AnnotationDocument.ForImage(area.Width, area.Height);
+        var rect = new RectangleItem { Rect = new RectD(120, 140, 260, 90) };
+        doc.Items.Add(new RedactItem { Rect = new RectD(420, 250, 240, 40), Mode = RedactMode.Pixelate, Strength = 10 });
+        doc.Items.Add(new StrokeItem
+        {
+            Kind = StrokeKind.Highlighter,
+            Points = [new PointD(110, 330), new PointD(520, 330)],
+            Style = new AnnotationStyle { Stroke = new Rgba(0xFF, 0xE6, 0x00), Thickness = 18, Opacity = 0.45, Shadow = false },
+        });
+        doc.Items.Add(rect);
+        doc.Items.Add(new LineItem { Start = new PointD(760, 120), End = new PointD(400, 180), Heads = ArrowHeads.End });
+        doc.Items.Add(new EllipseItem { Rect = new RectD(500, 360, 160, 90) });
+        doc.Items.Add(new StepItem { Center = new PointD(100, 140), Number = 1 });
+        doc.Items.Add(new StepItem { Center = new PointD(760, 400), Number = 2 });
+        doc.Items.Add(new TextItem { Position = new PointD(740, 160), Text = "Click Save\nwhen done", Background = new Rgba(0xFF, 0xFF, 0xFF) });
+
+        var source = new EditorDocumentSource
+        {
+            Original = image,
+            OriginalPng = [],
+            Document = doc,
+            ImagePath = @"C:\Users\you\Pictures\Grably\Grably_2026-11-14_15-30-05.png",
+            ProjectPath = Path.Combine(Path.GetTempPath(), "snapshot.grably"),
+        };
+        var window = ActivatorUtilities.CreateInstance<EditorWindow>(services, source);
+        window.Width = 1100;
+        window.Height = 820;
+        window.Editor.Tool = EditorTool.Select;
+        window.Editor.Select(rect);
+        return window;
+    }
+
+    /// <summary>The Library over a throwaway library with a few screenshots: editable, plain and missing.</summary>
+    private static LibraryWindow SampleLibrary(IServiceProvider services, string folder, bool withItems)
+    {
+        var paths = new AppPaths(
+            Path.Combine(folder, "roaming"), Path.Combine(folder, "local"), Path.Combine(folder, "Pictures"), Path.Combine(folder, "Videos"));
+        var library = new LibraryService(paths, services.GetRequiredService<ILogger<LibraryService>>());
+        if (withItems)
+        {
+            (string Title, string App, double HoursAgo, int Width, int Height, bool Editable, bool Missing)[] samples =
+            [
+                ("Grably_2026-11-22_15-30-05", "Code", 0.5, 1280, 800, true, false),
+                ("Checkout error", "msedge", 3, 960, 600, false, false),
+                ("Grably_2026-11-21_09-12-44", "ms-teams", 26, 1600, 900, true, false),
+                ("Quarterly chart", "EXCEL", 50, 800, 800, false, false),
+                ("Grably_2026-11-18_17-02-10", "explorer", 100, 1920, 1080, false, true),
+                ("Login form", "chrome", 150, 700, 900, false, false),
+            ];
+            Directory.CreateDirectory(paths.DefaultScreenshotsFolder);
+            Directory.CreateDirectory(paths.ProjectsFolder);
+            foreach (var sample in samples)
+            {
+                var area = new PixelRect(0, 0, sample.Width, sample.Height);
+                var window = new PixelRect(sample.Width / 8, sample.Height / 8, sample.Width * 5 / 8, sample.Height / 2);
+                var image = SyntheticDesktop(area, window).ToBitmapSource();
+                var file = Path.Combine(paths.DefaultScreenshotsFolder, sample.Title + ".png");
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(image));
+                using (var stream = File.Create(file))
+                {
+                    encoder.Save(stream);
+                }
+
+                var project = Path.Combine(paths.ProjectsFolder, sample.Title + ".grably");
+                if (sample.Editable)
+                {
+                    File.WriteAllBytes(project, []);
+                }
+
+                var item = library.RecordSave(file, project, image)
+                    ?? throw new InvalidOperationException("The sample library could not be written.");
+                library.Repository.Update(item with
+                {
+                    ProjectPath = sample.Editable ? project : null,
+                    SourceApp = sample.App,
+                    CreatedUtc = DateTime.UtcNow.AddHours(-sample.HoursAgo),
+                });
+                if (sample.Missing)
+                {
+                    File.Delete(file);
+                }
+            }
+        }
+
+        var viewModel = ActivatorUtilities.CreateInstance<LibraryViewModel>(services, library);
+        return ActivatorUtilities.CreateInstance<LibraryWindow>(services, viewModel);
+    }
+
+    /// <summary>The Settings window; with <paramref name="conflict"/>, as it looks when PrintScreen is taken.</summary>
+    private static SettingsWindow SampleSettings(IServiceProvider services, bool conflict)
+    {
+        var window = services.GetRequiredService<SettingsWindow>();
+        if (conflict)
+        {
+            var viewModel = (SettingsViewModel)window.DataContext;
+            viewModel.Hotkeys.First(h => h.Action == HotkeyAction.CaptureRegion).IsTaken = true;
+            viewModel.ShowPrintScreenHint = true;
+            viewModel.ErrorMessage = "Some keys are already used by another app or by Windows. Pick other keys for them.";
+        }
+
+        return window;
     }
 
     private static PixelBuffer SyntheticDesktop(PixelRect desktop, PixelRect window)

@@ -49,5 +49,9 @@ public static class MonitorService
             .ToList();
     }
 
+    /// <summary>The HMONITOR of the monitor showing <paramref name="point"/> (or the nearest one).</summary>
+    public static unsafe nint HandleAt(PixelPoint point) =>
+        (nint)PInvoke.MonitorFromPoint(new System.Drawing.Point(point.X, point.Y), MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST).Value;
+
     internal static PixelRect ToPixelRect(RECT r) => PixelRect.FromEdges(r.left, r.top, r.right, r.bottom);
 }

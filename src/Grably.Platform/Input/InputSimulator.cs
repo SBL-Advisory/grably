@@ -81,12 +81,19 @@ public static class InputSimulator
         LeftButton(down: false);
     }
 
-    private static void SendMouse(MOUSE_EVENT_FLAGS flags)
+    /// <summary>Whether Ctrl, Shift, Alt or a Windows key is held down right now.</summary>
+    public static bool AnyModifierDown() =>
+        new[] { 0x10, 0x11, 0x12, 0x5B, 0x5C }.Any(vk => (PInvoke.GetAsyncKeyState(vk) & 0x8000) != 0);
+
+    /// <summary>Turns the mouse wheel by <paramref name="notches"/> (negative scrolls down) over whatever is under the pointer.</summary>
+    public static void Wheel(int notches) => SendMouse(MOUSE_EVENT_FLAGS.MOUSEEVENTF_WHEEL, notches * 120);
+
+    private static void SendMouse(MOUSE_EVENT_FLAGS flags, int data = 0)
     {
         var input = new INPUT
         {
             type = INPUT_TYPE.INPUT_MOUSE,
-            Anonymous = new INPUT._Anonymous_e__Union { mi = new MOUSEINPUT { dwFlags = flags } },
+            Anonymous = new INPUT._Anonymous_e__Union { mi = new MOUSEINPUT { dwFlags = flags, mouseData = unchecked((uint)data) } },
         };
         PInvoke.SendInput([input], Marshal.SizeOf<INPUT>());
     }

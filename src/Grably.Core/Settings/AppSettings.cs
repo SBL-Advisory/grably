@@ -1,3 +1,4 @@
+using Grably.Core.Annotations;
 using Grably.Core.Hotkeys;
 
 namespace Grably.Core.Settings;
@@ -21,6 +22,8 @@ public sealed class AppSettings
 
     public RecordingSettings Recording { get; set; } = new();
 
+    public EditorSettings Editor { get; set; } = new();
+
     public static Dictionary<HotkeyAction, HotkeyGesture> DefaultHotkeys() => new()
     {
         [HotkeyAction.CaptureRegion] = HotkeyGesture.Parse("PrintScreen"),
@@ -32,12 +35,64 @@ public sealed class AppSettings
         [HotkeyAction.PauseRecording] = HotkeyGesture.Parse("Ctrl+Alt+P"),
     };
 
+    /// <summary>
+    /// A copy of these settings with what the settings window changed (from <paramref name="original"/>, what it
+    /// showed, to <paramref name="edited"/>) applied. Values it left alone keep their current value, so saving the
+    /// window never undoes changes made elsewhere while it was open: editor tool styles, or the sound and frame-rate
+    /// choices of the pre-record bar.
+    /// </summary>
+    public AppSettings WithChangesFrom(AppSettings original, AppSettings edited)
+    {
+        var result = Clone();
+        var after = edited.Clone();
+        CopyChanged(original.General, after.General, result.General);
+        CopyChanged(original.Screenshot, after.Screenshot, result.Screenshot);
+        CopyChanged(original.Recording, after.Recording, result.Recording);
+        foreach (var (action, gesture) in after.Hotkeys)
+        {
+            if (!original.Hotkeys.TryGetValue(action, out var before) || before != gesture)
+            {
+                result.Hotkeys[action] = gesture;
+            }
+        }
+
+        return result;
+    }
+
+    private static void CopyChanged<T>(T original, T edited, T target)
+        where T : class
+    {
+        foreach (var property in typeof(T).GetProperties().Where(p => p.CanRead && p.CanWrite))
+        {
+            var value = property.GetValue(edited);
+            if (!Equals(property.GetValue(original), value))
+            {
+                property.SetValue(target, value);
+            }
+        }
+    }
+
+    /// <summary>A key combination given to more than one action, or null when every hotkey is unique.</summary>
+    public HotkeyGesture? FindDuplicateHotkey() =>
+        Hotkeys.Values.Where(g => !g.IsNone).GroupBy(g => g).FirstOrDefault(g => g.Count() > 1)?.Key;
+
+    /// <summary>A deep copy, for editing in the settings window without touching the live settings until Save.</summary>
+    public AppSettings Clone()
+    {
+        var copy = System.Text.Json.JsonSerializer.Deserialize<AppSettings>(
+            System.Text.Json.JsonSerializer.Serialize(this, SettingsStore.JsonOptions), SettingsStore.JsonOptions)!;
+        copy.Normalize();
+        return copy;
+    }
+
     /// <summary>Fills anything missing or null after loading an older or hand-edited file.</summary>
     public void Normalize()
     {
         General ??= new GeneralSettings();
         Screenshot ??= new ScreenshotSettings();
         Recording ??= new RecordingSettings();
+        Editor ??= new EditorSettings();
+        Editor.ToolStyles ??= [];
         Hotkeys ??= [];
         foreach (var (action, gesture) in DefaultHotkeys())
         {
@@ -63,6 +118,12 @@ public sealed class GeneralSettings
 
     /// <summary>Null means the default (Videos\Grably).</summary>
     public string? VideosFolder { get; set; }
+}
+
+public sealed class EditorSettings
+{
+    /// <summary>The last style used with each editor tool, so the next annotation looks like the previous one.</summary>
+    public Dictionary<EditorTool, AnnotationStyle> ToolStyles { get; set; } = [];
 }
 
 public enum AppTheme
@@ -91,6 +152,9 @@ public sealed class ScreenshotSettings
     /// instead of capturing as soon as the mouse button is released.
     /// </summary>
     public bool AdjustBeforeCapture { get; set; }
+
+    /// <summary>Read the text in screenshots (on this PC) so library search finds words inside them.</summary>
+    public bool MakeTextSearchable { get; set; } = true;
 }
 
 public enum AfterCaptureAction
@@ -132,6 +196,9 @@ public sealed class RecordingSettings
     public string? MicrophoneDeviceId { get; set; }
 
     public bool ShowCountdown { get; set; } = true;
+
+    /// <summary>The pre-record bar's Effects switch: draw the highlight, clicks and keys chosen below.</summary>
+    public bool ShowEffects { get; set; } = true;
 
     public bool HighlightCursor { get; set; } = true;
 

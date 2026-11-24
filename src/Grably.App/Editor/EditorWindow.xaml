@@ -1,0 +1,185 @@
+<ui:FluentWindow
+    x:Class="Grably.App.Editor.EditorWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    xmlns:local="clr-namespace:Grably.App.Editor"
+    mc:Ignorable="d"
+    d:DataContext="{d:DesignInstance local:EditorViewModel}"
+    Title="Grably editor"
+    Width="1200"
+    Height="800"
+    MinWidth="760"
+    MinHeight="480"
+    WindowStartupLocation="CenterScreen"
+    ExtendsContentIntoTitleBar="True"
+    WindowBackdropType="Mica"
+    WindowCornerPreference="Round"
+    Icon="pack://application:,,,/Assets/grably.ico">
+
+    <ui:FluentWindow.Resources>
+        <BooleanToVisibilityConverter x:Key="Visible" />
+        <Style x:Key="BarLabel" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="12,0,6,0" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        </Style>
+        <Style x:Key="BarSlider" TargetType="Slider" BasedOn="{StaticResource {x:Type Slider}}">
+            <Setter Property="Width" Value="110" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="IsSnapToTickEnabled" Value="False" />
+        </Style>
+    </ui:FluentWindow.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar x:Name="WindowTitleBar" Grid.Row="0" Title="Grably editor">
+            <ui:TitleBar.Icon>
+                <ui:ImageIcon Source="pack://application:,,,/Assets/grably-app-icon.png" />
+            </ui:TitleBar.Icon>
+        </ui:TitleBar>
+
+        <!-- Tools on the left, document actions on the right -->
+        <DockPanel Grid.Row="1" Margin="12,0,12,6" LastChildFill="False">
+            <StackPanel x:Name="ToolButtons" DockPanel.Dock="Left" Orientation="Horizontal" />
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <ui:Button x:Name="UndoButton" Appearance="Transparent" Icon="{ui:SymbolIcon ArrowUndo24}" ToolTip="Undo (Ctrl+Z)" IsEnabled="{Binding CanUndo}" Click="Undo_Click" />
+                <ui:Button x:Name="RedoButton" Appearance="Transparent" Icon="{ui:SymbolIcon ArrowRedo24}" ToolTip="Redo (Ctrl+Y)" IsEnabled="{Binding CanRedo}" Click="Redo_Click" />
+                <Separator Margin="6,4" />
+                <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon FolderOpen24}" ToolTip="Open an image or Grably project (Ctrl+O)" Click="Open_Click" />
+                <ui:Button x:Name="DragButton" Appearance="Transparent" Icon="{ui:SymbolIcon ArrowExportUp24}" ToolTip="Drag this onto another app to share the image" PreviewMouseMove="DragButton_PreviewMouseMove" />
+                <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon Copy24}" ToolTip="Copy the image (Ctrl+C)" Click="Copy_Click" />
+                <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon ScanText24}" ToolTip="Copy the text in the image (Ctrl+Shift+C)" Click="CopyText_Click" />
+                <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon SaveCopy24}" ToolTip="Save as (Ctrl+Shift+S)" Click="SaveAs_Click" />
+                <ui:Button Margin="4,0,0,0" Appearance="Primary" Icon="{ui:SymbolIcon Save24}" Content="Save" ToolTip="Save (Ctrl+S)" Click="Save_Click" />
+            </StackPanel>
+        </DockPanel>
+
+        <!-- Property bar: only the settings that apply to the selection or tool are shown -->
+        <Border
+            Grid.Row="2"
+            Padding="12,6"
+            BorderThickness="0,1,0,1"
+            Background="{DynamicResource LayerFillColorDefaultBrush}"
+            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}">
+            <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" Visibility="{Binding ShowColor, Converter={StaticResource Visible}}">
+                    <ItemsControl ItemsSource="{Binding Palette}" VerticalAlignment="Center">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border
+                                    Width="22"
+                                    Height="22"
+                                    Margin="2,0"
+                                    CornerRadius="11"
+                                    BorderThickness="1"
+                                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                    Cursor="Hand"
+                                    ToolTip="{Binding}"
+                                    MouseLeftButtonUp="Swatch_Click">
+                                    <Border.Background>
+                                        <SolidColorBrush Color="{Binding}" />
+                                    </Border.Background>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <ItemsControl ItemsSource="{Binding RecentColors}" VerticalAlignment="Center" Margin="4,0,0,0">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Width="18" Height="18" Margin="2,0" CornerRadius="4" Cursor="Hand" ToolTip="{Binding}" MouseLeftButtonUp="Swatch_Click">
+                                    <Border.Background>
+                                        <SolidColorBrush Color="{Binding}" />
+                                    </Border.Background>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <ui:TextBox
+                        x:Name="HexBox"
+                        Width="96"
+                        Margin="8,0,0,0"
+                        VerticalAlignment="Center"
+                        Text="{Binding HexColor, UpdateSourceTrigger=LostFocus}"
+                        ToolTip="Colour as #RRGGBB"
+                        KeyDown="HexBox_KeyDown" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Visibility="{Binding ShowThickness, Converter={StaticResource Visible}}">
+                    <TextBlock Style="{StaticResource BarLabel}" Text="Size" />
+                    <Slider Style="{StaticResource BarSlider}" Minimum="1" Maximum="40" Value="{Binding Thickness}" ToolTip="{Binding Thickness}" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Visibility="{Binding ShowFontSize, Converter={StaticResource Visible}}">
+                    <TextBlock Style="{StaticResource BarLabel}" Text="Font size" />
+                    <Slider Style="{StaticResource BarSlider}" Minimum="8" Maximum="96" Value="{Binding FontSize}" ToolTip="{Binding FontSize}" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Visibility="{Binding ShowStrength, Converter={StaticResource Visible}}">
+                    <TextBlock Style="{StaticResource BarLabel}" Text="Strength" />
+                    <Slider Style="{StaticResource BarSlider}" Minimum="2" Maximum="40" Value="{Binding Strength}" ToolTip="{Binding Strength}" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Visibility="{Binding ShowColor, Converter={StaticResource Visible}}">
+                    <TextBlock Style="{StaticResource BarLabel}" Text="Opacity" />
+                    <Slider Style="{StaticResource BarSlider}" Width="80" Minimum="0.1" Maximum="1" Value="{Binding Opacity}" />
+                    <CheckBox Margin="12,0,0,0" VerticalAlignment="Center" Content="Fill" IsChecked="{Binding Filled}" Visibility="{Binding ShowFill, Converter={StaticResource Visible}}" />
+                    <CheckBox Margin="12,0,0,0" VerticalAlignment="Center" Content="Shadow" IsChecked="{Binding Shadow}" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Margin="12,0,0,0" Visibility="{Binding HasSelection, Converter={StaticResource Visible}}">
+                    <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon ArrowUp24}" ToolTip="Bring forward (Ctrl+])" Click="BringForward_Click" />
+                    <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon ArrowDown24}" ToolTip="Send backward (Ctrl+[)" Click="SendBackward_Click" />
+                    <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon DocumentCopy24}" ToolTip="Duplicate (Ctrl+D)" Click="Duplicate_Click" />
+                    <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon Delete24}" ToolTip="Delete (Del)" Click="Delete_Click" />
+                </StackPanel>
+
+                <ui:Button x:Name="ResetCropButton" Margin="12,0,0,0" Content="Reset crop" Icon="{ui:SymbolIcon Dismiss24}" Visibility="Collapsed" Click="ResetCrop_Click" />
+            </WrapPanel>
+        </Border>
+
+        <!-- The canvas: the image at the current zoom, with a layer for in-place text boxes on top -->
+        <ScrollViewer
+            x:Name="Scroller"
+            Grid.Row="3"
+            HorizontalScrollBarVisibility="Auto"
+            VerticalScrollBarVisibility="Auto"
+            Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+            Focusable="False">
+            <Grid x:Name="CanvasHost" Margin="32" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Canvas x:Name="TextLayer" />
+            </Grid>
+        </ScrollViewer>
+
+        <!-- Status bar -->
+        <DockPanel Grid.Row="4" Margin="12,4" LastChildFill="False">
+            <TextBlock x:Name="SizeText" DockPanel.Dock="Left" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon ZoomOut24}" ToolTip="Zoom out (Ctrl+-)" Click="ZoomOut_Click" />
+                <TextBlock x:Name="ZoomText" MinWidth="48" VerticalAlignment="Center" TextAlignment="Center" />
+                <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon ZoomIn24}" ToolTip="Zoom in (Ctrl++)" Click="ZoomIn_Click" />
+                <ui:Button Appearance="Transparent" Content="Fit" ToolTip="Fit to window (Ctrl+0)" Click="Fit_Click" />
+                <ui:Button Appearance="Transparent" Content="100%" ToolTip="Actual pixels (Ctrl+1)" Click="ActualSize_Click" />
+            </StackPanel>
+        </DockPanel>
+    </Grid>
+</ui:FluentWindow>

@@ -5,8 +5,31 @@ namespace Grably.Tests.App;
 public class LaunchOptionsTests
 {
     [Fact]
-    public void No_arguments_opens_normally() =>
-        Assert.Equal(new LaunchOptions(), LaunchOptions.Parse([]));
+    public void No_arguments_opens_normally()
+    {
+        var options = LaunchOptions.Parse([]);
+
+        Assert.False(options.Background);
+        Assert.Empty(options.Files);
+        Assert.Null(options.Snapshot);
+    }
+
+    [Fact]
+    public void Existing_file_paths_are_opened_and_missing_ones_ignored()
+    {
+        var file = Path.GetTempFileName();
+        try
+        {
+            var options = LaunchOptions.Parse([file, @"C:\does\not\exist.png", "--background"]);
+
+            Assert.Equal([Path.GetFullPath(file)], options.Files);
+            Assert.True(options.Background);
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
 
     [Theory]
     [InlineData("--background")]

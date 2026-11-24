@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
+using Velopack;
 
 namespace Grably.App;
 
@@ -13,7 +14,13 @@ public static class Program
     [STAThread]
     public static int Main(string[] args)
     {
-        // M10: VelopackApp.Build().Run() must be the very first call here.
+        // First of all: when Velopack's installer, updater or uninstaller starts Grably for one of its hooks, it handles
+        // that and exits here. A downloaded update is installed further down, only once this is the one running Grably.
+        VelopackApp.Build()
+            .SetAutoApplyOnStartup(false)
+            .OnBeforeUninstallFastCallback(_ => RemoveStartup())
+            .Run();
+
         var options = LaunchOptions.Parse(args);
         var paths = AppPaths.FromEnvironment();
         paths.EnsureCreated();
@@ -31,7 +38,7 @@ public static class Program
             if (guard is null)
             {
                 log.Information("{App} is already running; forwarding this launch to it", AppInfo.Name);
-                if (SingleInstanceGuard.SendToPrimary(AppInfo.Id, args, TimeSpan.FromSeconds(3)))
+                if (SingleInstanceGuard.SendToPrimary(AppInfo.Id, ForwardedArguments(args), TimeSpan.FromSeconds(3)))
                 {
                     return 0;
                 }
@@ -42,6 +49,11 @@ public static class Program
                     + "its tray icon or close it before starting Grably again.",
                     "Grably", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
                 return 1;
+            }
+
+            if (Shell.UpdateService.InstallPendingAtStartup(args, log))
+            {
+                return 0;
             }
 
             return Run(options, paths, guard);
@@ -57,6 +69,27 @@ public static class Program
             Log.CloseAndFlush();
         }
     }
+
+    /// <summary>Uninstalling: Windows must not try to start a Grably that is gone at the next sign-in.</summary>
+    private static void RemoveStartup()
+    {
+        try
+        {
+            new StartupRegistration().Set(false, string.Empty);
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            // Uninstalling goes on; a Run entry pointing at a missing file does no harm beyond a failed start.
+        }
+    }
+
+    /// <summary>
+    /// The arguments to hand to the running instance, with file paths made absolute: the running instance has its
+    /// own working directory, so "Grably.exe shot.png" from a terminal would otherwise open the wrong file.
+    /// </summary>
+    public static string[] ForwardedArguments(IEnumerable<string> args) =>
+        args.Select(a => !a.StartsWith("--", StringComparison.Ordinal) && System.IO.File.Exists(a) ? System.IO.Path.GetFullPath(a) : a)
+            .ToArray();
 
     private static int Run(LaunchOptions options, AppPaths paths, SingleInstanceGuard? guard)
     {

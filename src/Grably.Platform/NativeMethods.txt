@@ -74,3 +74,44 @@ SetWinEventHook
 UnhookWinEvent
 EVENT_SYSTEM_FOREGROUND
 WINEVENT_OUTOFCONTEXT
+
+// Recycle Bin
+SHFileOperation
+FO_DELETE
+FILEOPERATION_FLAGS
+
+// Keep Grably's own status windows out of captures
+SetWindowDisplayAffinity
+WINDOW_DISPLAY_AFFINITY
+
+// Scrolling capture waits until no modifier key is held (Ctrl or Shift would turn the wheel into zoom or sideways)
+GetAsyncKeyState
+
+// Recording: 1 ms timer resolution while the frame clock runs
+timeBeginPeriod
+timeEndPeriod
+
+// Cursor effects while recording: Raw Input (asynchronous, never delays the user's input; events are only drawn
+// into frames, never logged), and what the keyboard layout types for a key
+RegisterRawInputDevices
+GetRawInputData
+RAWINPUT
+RAWINPUTDEVICE
+RAWINPUTHEADER
+RAWINPUTDEVICE_FLAGS
+RAW_INPUT_DATA_COMMAND_FLAGS
+WM_INPUT
+RID_DEVICE_INFO_TYPE
+RegisterClassEx
+UnregisterClass
+CreateWindowEx
+DefWindowProc
+DestroyWindow
+GetModuleHandle
+WM_KEYDOWN
+WM_SYSKEYDOWN
+ToUnicodeEx
+GetKeyboardLayout
+GetKeyState
+TranslateMessage
+DispatchMessage

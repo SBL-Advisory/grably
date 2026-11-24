@@ -11,13 +11,12 @@ namespace Grably.App.Shell;
 
 /// <summary>
 /// Every user-facing action, whether it comes from a hotkey, the tray menu or a window. Call on the UI thread.
-/// Actions whose feature is not built yet say so; each is replaced in the milestone named in its message.
 /// </summary>
 public sealed class AppCommands(
-    IServiceProvider services, ScreenshotService screenshots, ForegroundWindowTracker foregroundTracker,
-    UserNotifications notifications, ILogger<AppCommands> logger)
+    IServiceProvider services, ScreenshotService screenshots, ForegroundWindowTracker foregroundTracker, ILogger<AppCommands> logger)
 {
     private LibraryWindow? _library;
+    private SettingsWindow? _settings;
 
     public void Execute(HotkeyAction action)
     {
@@ -91,17 +90,35 @@ public sealed class AppCommands(
     public void CaptureLastUserWindow() =>
         _ = screenshots.CaptureAsync(CaptureKind.Window, foregroundTracker.LastUserWindow is var w and not 0 ? w : null);
 
-    public void ScrollingCapture() => NotYet("Scrolling capture", "M5");
+    public void ScrollingCapture() => _ = services.GetRequiredService<ScrollingCaptureService>().CaptureAsync();
 
-    public void CaptureText() => NotYet("Text capture", "M5");
+    public void CaptureText() => _ = services.GetRequiredService<Text.TextCaptureService>().CaptureAsync();
 
-    public void ToggleRecording() => NotYet("Screen recording", "M7");
+    public void ToggleRecording() => _ = services.GetRequiredService<Recording.RecordingController>().ToggleAsync();
 
-    public void PauseRecording() => NotYet("Pause recording", "M7");
+    public void PauseRecording() => services.GetRequiredService<Recording.RecordingController>().TogglePause();
 
-    public void OpenSettings() => NotYet("Settings", "M4");
+    public void OpenSettings()
+    {
+        if (_settings is null)
+        {
+            _settings = services.GetRequiredService<SettingsWindow>();
+            _settings.Closed += (_, _) => _settings = null;
+            _settings.Show();
+        }
 
-    public void CheckForUpdates() => NotYet("Updates", "M10");
+        if (_settings.WindowState == WindowState.Minimized)
+        {
+            _settings.WindowState = WindowState.Normal;
+        }
+
+        _settings.Activate();
+    }
+
+    public void CheckForUpdates() => _ = services.GetRequiredService<UpdateService>().CheckAsync(userAsked: true);
+
+    /// <summary>Quits like Exit (with the same questions), then the downloaded update installs and Grably starts again.</summary>
+    public void RestartToUpdate() => _ = ExitAsync(update: true);
 
     public void OpenLibrary()
     {
@@ -120,15 +137,44 @@ public sealed class AppCommands(
         _library.Activate();
     }
 
-    public void Exit()
-    {
-        logger.LogInformation("Exit requested");
-        Application.Current.Shutdown();
-    }
+    public void Exit() => _ = ExitAsync(update: false);
 
-    private void NotYet(string feature, string milestone)
+    private async Task ExitAsync(bool update)
     {
-        logger.LogInformation("{Feature} requested; not built yet (milestone {Milestone})", feature, milestone);
-        notifications.Show($"{feature} is coming soon.");
+        logger.LogInformation(update ? "Restart to update requested" : "Exit requested");
+        var updates = services.GetRequiredService<UpdateService>();
+        if (update && !updates.CanInstall)
+        {
+            logger.LogWarning("No update can be installed now; not restarting");
+            return;
+        }
+
+        if (!await services.GetRequiredService<Recording.RecordingController>().ConfirmExitAsync())
+        {
+            logger.LogInformation("Exit cancelled to keep the recording going");
+            return;
+        }
+
+        if (!await services.GetRequiredService<Trim.TrimService>().ConfirmExitAsync())
+        {
+            logger.LogInformation("Exit cancelled to finish an export");
+            return;
+        }
+
+        // Ask about unsaved editors first: during Shutdown, WPF ignores a window's request to stay open.
+        if (!services.GetRequiredService<Editor.EditorService>().ConfirmCloseAll())
+        {
+            logger.LogInformation("Exit cancelled to keep unsaved changes");
+            return;
+        }
+
+        // Quit even if the updater could not be started: the recording is already saved, and the downloaded update
+        // installs the next time Grably starts.
+        if (update && !updates.InstallOnExit())
+        {
+            logger.LogWarning("Quitting without restarting; the update installs at the next start");
+        }
+
+        Application.Current.Shutdown();
     }
 }

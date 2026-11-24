@@ -1,0 +1,116 @@
+name: Release
+
+# Pushing a tag v<Version> (matching <Version> in Directory.Build.props; tag a commit on main) builds, tests, packs
+# and publishes a GitHub release with the Velopack installer and update packages. Installed copies of Grably update
+# from these releases.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  ffmpeg:
+    # Grably's minimal LGPL ffmpeg, built from pinned sources in the same pinned image as tools/ffmpeg/build.ps1.
+    runs-on: ubuntu-24.04
+    container: ubuntu:24.04@sha256:562111b88caa79c71391c0c4d3c2114a7d5c35915c20561fd893cb1e07929e6b
+    steps:
+      - uses: actions/checkout@v4
+
+      # First, so a wrong tag fails in seconds rather than after the ffmpeg build.
+      - name: Check the tag matches the version
+        run: |
+          version="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props | head -n 1)"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "The tag $GITHUB_REF_NAME does not match <Version>$version</Version>"
+            exit 1
+          fi
+
+      - name: Build ffmpeg
+        run: bash tools/ffmpeg/build.sh "$GITHUB_WORKSPACE/ffmpeg-out"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg
+          path: ffmpeg-out
+          if-no-files-found: error
+
+  release:
+    needs: ffmpeg
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO_URL: https://github.com/${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ffmpeg
+          path: src/Grably.App/ffmpeg
+
+      - name: Read the version
+        run: |
+          $version = ([regex]::Match((Get-Content -Raw Directory.Build.props), '<Version>([^<]+)</Version>')).Groups[1].Value
+          "VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Restore
+        run: dotnet restore Grably.slnx && dotnet tool restore
+
+      - name: Build
+        run: dotnet build Grably.slnx --configuration Release --no-restore -warnaserror
+
+      - name: Test
+        run: dotnet test --solution Grably.slnx --configuration Release --no-build --filter-not-trait "Category=Desktop"
+
+      # The freshly built ffmpeg through Grably's own argument lists: a test video made through Matroska like a
+      # recording, then a frame-exact GIF export with its own palette, probing and frame extraction. An MP4 export
+      # needs a hardware or Media Foundation encoder, which hosted runners may not have, so it is tried but not required.
+      - name: Check the minimal ffmpeg
+        run: |
+          $env:GRABLY_HOME = Join-Path $env:RUNNER_TEMP 'grably-home'
+          $cli = 'tools/Grably.DevCli/bin/Release/net10.0-windows10.0.26100.0/grably-dev.exe'
+          & $cli export --sample --keep 1-3,5-7 --format gif
+          if ($LASTEXITCODE) { throw 'The GIF export failed with the minimal ffmpeg' }
+          & $cli encoders
+          & $cli export --sample --keep 1-3 --format mp4
+          if ($LASTEXITCODE) { Write-Output '::warning::The MP4 export could not be checked here (no H.264 encoder works on this runner)' }
+          exit 0
+
+      # The previous release's package lets Velopack make a small delta update from it. The first release has none.
+      - name: Download the previous release
+        continue-on-error: true
+        run: dotnet vpk download github --repoUrl $env:REPO_URL --token $env:GH_TOKEN -o artifacts/releases
+
+      - name: Pack
+        run: ./build/pack.ps1 -Version $env:VERSION -Output artifacts/releases
+
+      # Uploaded as a draft first: the release only goes public once the FFmpeg source is attached to it (LGPL).
+      # --merge and --clobber let a re-run finish a release whose earlier run stopped half way.
+      - name: Upload the release as a draft
+        run: >
+          dotnet vpk upload github --repoUrl $env:REPO_URL --token $env:GH_TOKEN -o artifacts/releases --merge
+          --releaseName "Grably $env:VERSION" --tag "${{ github.ref_name }}"
+
+      - name: Attach the FFmpeg source and publish
+        run: |
+          $script = Get-Content -Raw tools/ffmpeg/build.sh
+          $url = ([regex]::Match($script, 'FFMPEG_URL="([^"]+)"')).Groups[1].Value
+          $sha256 = ([regex]::Match($script, 'FFMPEG_SHA256="([^"]+)"')).Groups[1].Value
+          $file = Split-Path $url -Leaf
+          Invoke-WebRequest $url -OutFile $file
+          if ((Get-FileHash -Algorithm SHA256 $file).Hash -ne $sha256) { throw "SHA256 mismatch for $file" }
+          gh release upload "${{ github.ref_name }}" $file --clobber --repo "${{ github.repository }}"
+          if ($LASTEXITCODE) { throw 'Attaching the FFmpeg source failed, so the release stays a draft' }
+          gh release edit "${{ github.ref_name }}" --draft=false --repo "${{ github.repository }}"
+          if ($LASTEXITCODE) { throw 'Publishing the release failed' }

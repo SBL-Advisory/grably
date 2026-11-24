@@ -20,10 +20,62 @@ public sealed class HotkeyController(
         ApplyFromSettings();
     }
 
+    private Dictionary<HotkeyAction, HotkeyGesture>? _applied;
+    private bool _suspended;
+    private bool _recordingActive;
+
+    /// <summary>
+    /// While a recording runs, the pause hotkey is registered too (it stays free the rest of the time, since its
+    /// keys are ordinary shortcuts elsewhere).
+    /// </summary>
+    public void SetRecordingActive(bool active)
+    {
+        _recordingActive = active;
+        _applied = null;
+        ApplyFromSettings();
+    }
+
+    /// <summary>
+    /// Releases Grably's hotkeys (while the settings window records a new one, so pressing PrintScreen there
+    /// does not start a capture). <see cref="Resume"/> registers them again.
+    /// </summary>
+    public void Suspend()
+    {
+        _suspended = true;
+        _applied = null;
+        hotkeys.Apply([]);
+    }
+
+    public void Resume()
+    {
+        _suspended = false;
+        ApplyNow();
+    }
+
+    /// <summary>Registers the hotkeys from the current settings now and returns the results.</summary>
+    public IReadOnlyList<HotkeyRegistration> ApplyNow()
+    {
+        ApplyFromSettings();
+        return Registrations;
+    }
+
     private void ApplyFromSettings()
     {
+        if (_suspended)
+        {
+            return;
+        }
+
         // Pause is only registered while recording, so it does not hold on to the key combination otherwise.
-        var bindings = settings.Current.Hotkeys.Where(b => b.Key != HotkeyAction.PauseRecording);
+        var bindings = settings.Current.Hotkeys.Where(b => b.Key != HotkeyAction.PauseRecording || _recordingActive)
+            .ToDictionary(b => b.Key, b => b.Value);
+        if (_applied is not null && _applied.Count == bindings.Count && !_applied.Except(bindings).Any()
+            && Registrations.All(r => r.Succeeded))
+        {
+            return; // settings were saved for another reason and every hotkey is registered
+        }
+
+        _applied = bindings;
         Registrations = hotkeys.Apply(bindings);
         var failed = Registrations.Where(r => !r.Succeeded).ToList();
         if (failed.Count > 0)

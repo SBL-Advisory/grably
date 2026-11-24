@@ -1,14 +1,19 @@
+using Grably.App.Editor;
 using Grably.App.Imaging;
+using Grably.App.Library;
 using Grably.App.Shell;
 using Grably.Core;
 using Grably.Core.Capture;
 using Grably.Core.Settings;
+using Grably.Platform.Display;
 using Microsoft.Extensions.Logging;
 
 namespace Grably.App.Capture;
 
-/// <summary>What happens to a finished screenshot: file, clipboard, and (from M3/M4) the editor and the library.</summary>
-public sealed class CaptureDelivery(SettingsStore settings, AppPaths paths, UserNotifications notifications, ILogger<CaptureDelivery> logger)
+/// <summary>What happens to a finished screenshot: file, clipboard, library, then the editor or a preview.</summary>
+public sealed class CaptureDelivery(
+    SettingsStore settings, AppPaths paths, EditorService editors, LibraryService library, UserNotifications notifications,
+    ILogger<CaptureDelivery> logger)
 {
     /// <summary>Saves (always first, so nothing is lost) and copies the capture. Returns the saved file's path.</summary>
     public string Deliver(CaptureResult capture)
@@ -41,10 +46,32 @@ public sealed class CaptureDelivery(SettingsStore settings, AppPaths paths, User
             }
         }
 
-        // M3 opens the editor here when AfterCapture is OpenEditor; M4 adds the capture to the library.
-        notifications.Show(options.CopyToClipboard && !copied
-            ? $"Screenshot saved to {folder}, but the clipboard was busy so it was not copied."
-            : $"Screenshot {(copied ? "copied and " : string.Empty)}saved to {folder}");
+        library.AddCapture(capture, path, bitmap);
+
+        switch (options.AfterCapture)
+        {
+            case AfterCaptureAction.OpenEditor:
+                editors.OpenCapture(capture, path);
+                if (options.CopyToClipboard && !copied)
+                {
+                    notifications.Show("The clipboard was busy, so the screenshot was not copied.");
+                }
+
+                break;
+
+            case AfterCaptureAction.ShowPreview:
+                var monitor = MonitorService.GetMonitors().FirstOrDefault(m => m.Bounds.Contains(capture.Area.Center))
+                    ?? MonitorService.GetMonitors()[0];
+                new CapturePreviewWindow(path, bitmap, monitor.WorkArea, () => editors.OpenCapture(capture, path)).Show();
+                break;
+
+            default:
+                notifications.Show(options.CopyToClipboard && !copied
+                    ? $"Screenshot saved to {folder}, but the clipboard was busy so it was not copied."
+                    : $"Screenshot {(copied ? "copied and " : string.Empty)}saved to {folder}");
+                break;
+        }
+
         return path;
     }
 }
